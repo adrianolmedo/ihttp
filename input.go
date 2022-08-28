@@ -16,7 +16,7 @@ type Input struct {
 	Options   *Options
 	Method    string
 	URL       string
-	Items     []Item // Used when BodyType is JSONBody or FormBody.
+	Items     []item // Used when BodyType is JSONBody or FormBody.
 	StdinData []byte
 	BodyType  BodyType
 }
@@ -95,7 +95,7 @@ func (inp *Input) processItems(items []string, stdin io.Reader) (err error) {
 		bodyType := getBodyType(inp.Options)
 
 		seps := SepsGroupAllItems()
-		inp.Items = make([]Item, len(items))
+		inp.Items = make([]item, len(items))
 
 		for i := 0; i < len(items); i++ {
 			// parseItem works as splitItem in httpie-go.

@@ -29,7 +29,7 @@ func (oj objectJSON) toData() (data []byte, err error) {
 	return data, nil
 }
 
-type itemValFunc func(Item) string
+type itemValFunc func(item) string
 
 // parseRequestBody parse Key and Val fields from the data separators to objectJSON
 // (that it could be later encode to JSON format data for the `body` argument
@@ -78,7 +78,7 @@ func parseRequestBody(inp *Input) (body, error) {
 }
 
 // itemVal is an itemValFunc type for the map `rules` in parseRequestBody.
-func itemVal(i Item) string { return i.Val }
+func itemVal(i item) string { return i.Val }
 
 type request struct {
 	*http.Request
@@ -135,7 +135,7 @@ func (r *request) parseQuery(inp *Input) (err error) {
 	return nil
 }
 
-type itemValWithErrFunc func(Item) (string, error)
+type itemValWithErrFunc func(item) (string, error)
 
 func (r *request) parseHeaders(inp *Input) error {
 	var rules interface{} = map[string]interface{}{
@@ -162,11 +162,11 @@ func (r *request) parseHeaders(inp *Input) error {
 }
 
 // headerVal is an itemValWithErrFunc type for the map `rules` in parseRequestHeaders.
-func itemHeaderVal(i Item) (string, error) { return i.Val, nil }
+func itemHeaderVal(i item) (string, error) { return i.Val, nil }
 
 // emptyHeaderVal is an itemValWithErrFunc type for the map `rules` in
 // parseRequestHeaders.
-func emptyHeaderVal(i Item) (string, error) {
+func emptyHeaderVal(i item) (string, error) {
 	if i.Val != "" {
 		return i.Val, nil
 	}

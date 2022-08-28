@@ -8,7 +8,7 @@ import (
 
 // Item a key-value pair struct for the arguments considered as ITEMS after
 // the URL.
-type Item struct {
+type item struct {
 	// Key represent the value string before of a separator.
 	Key string
 
@@ -30,7 +30,7 @@ type Item struct {
 // thereof). Literal back slash characters have to be escaped as well (`\\`).
 //
 // parseItem is used internally to parse items in Parser.
-func parseItem(arg string, seps []string) (Item, error) {
+func parseItem(arg string, seps []string) (item, error) {
 	var sep, key, value string
 
 	tokens := tokenize(arg, seps)
@@ -76,10 +76,10 @@ func parseItem(arg string, seps []string) (Item, error) {
 		}
 		return true
 	}() {
-		return Item{}, fmt.Errorf("%s is not a valid value", arg)
+		return item{}, fmt.Errorf("%s is not a valid value", arg)
 	}
 
-	return Item{
+	return item{
 		Key: key,
 		Val: value,
 		Sep: sep,
