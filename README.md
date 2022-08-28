@@ -4,6 +4,8 @@
 A simple and lightweight HTTP Client, fully using the Golang standard library net/http package as a CLI tool, 
 inspired in [HTTPie](https://github.com/httpie/httpie).
 
+![](https://i.imgur.com/yzht15h.gif)
+
 ## TO-DO
 
 This proposal is still a work in progress, it is not ready to be used properly for testing REST APIs.
