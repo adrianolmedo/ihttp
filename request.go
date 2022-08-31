@@ -8,78 +8,6 @@ import (
 	"net/url"
 )
 
-type body struct {
-	content     []byte
-	contentType string
-}
-
-// objectJSON represent a JSON object as a map. You can get it as JSON-encoded data.
-type objectJSON map[string]interface{}
-
-// toData execute internally json.Marshal for get it as JSON-encoded data.
-//
-// If the JSON object map is empty, it will return nil as zero value of []byte.
-func (oj objectJSON) toData() (data []byte, err error) {
-	if len(oj) > 0 {
-		data, err = json.Marshal(oj)
-		if err != nil {
-			return nil, err
-		}
-	}
-	return data, nil
-}
-
-type itemValFunc func(item) string
-
-// parseRequestBody parse Key and Val fields from the data separators to objectJSON
-// (that it could be later encode to JSON format data for the `body` argument
-// to http.NewRequest).
-//
-// TODO: Try to do this with generics.
-func parseRequestBody(inp *Input) (body, error) {
-	obj := make(objectJSON)
-
-	var rules interface{} = map[string]interface{}{
-		SepDataString: func() (itemValFunc, objectJSON) {
-			return itemVal, obj
-
-		},
-	}
-
-	for _, item := range inp.Items {
-		if fn, ok := rules.(map[string]interface{})[item.Sep].(func() (itemValFunc, objectJSON)); ok {
-			valFunc, targetMap := fn()
-			value := valFunc(item)
-			targetMap[item.Key] = value
-		}
-	}
-
-	switch inp.BodyType {
-	case EmptyBody:
-		return body{}, nil
-	case JSONBody:
-		bodyData, err := obj.toData()
-		if err != nil {
-			return body{}, fmt.Errorf("marshaling JSON of HTTP body: %v", err)
-		}
-
-		return body{
-			content:     bodyData,
-			contentType: "application/json",
-		}, nil
-	case RawBody:
-		return body{
-			content:     inp.StdinData,
-			contentType: "application/json",
-		}, nil
-	default:
-		return body{}, fmt.Errorf("unknown body type: %v", inp.BodyType)
-	}
-}
-
-// itemVal is an itemValFunc type for the map `rules` in parseRequestBody.
-func itemVal(i item) string { return i.Val }
-
 type request struct {
 	*http.Request
 }
@@ -113,6 +41,78 @@ func NewRequest(inp *Input) (*http.Request, error) {
 
 	return r.Request, nil
 }
+
+type bodyTuple struct {
+	content     []byte
+	contentType string
+}
+
+// objectJSON represent a JSON object as a map. You can get it as JSON-encoded data.
+type objectJSON map[string]interface{}
+
+// toData execute internally json.Marshal for get it as JSON-encoded data.
+//
+// If the JSON object map is empty, it will return nil as zero value of []byte.
+func (oj objectJSON) toData() (data []byte, err error) {
+	if len(oj) > 0 {
+		data, err = json.Marshal(oj)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return data, nil
+}
+
+type itemValFunc func(item) string
+
+// parseRequestBody parse Key and Val fields from the data separators to objectJSON
+// (that it could be later encode to JSON format data for the `body` argument
+// to http.NewRequest).
+//
+// TODO: Try to do this with generics.
+func parseRequestBody(inp *Input) (bodyTuple, error) {
+	obj := make(objectJSON)
+
+	var rules interface{} = map[string]interface{}{
+		SepDataString: func() (itemValFunc, objectJSON) {
+			return itemVal, obj
+
+		},
+	}
+
+	for _, item := range inp.Items {
+		if fn, ok := rules.(map[string]interface{})[item.Sep].(func() (itemValFunc, objectJSON)); ok {
+			valFunc, targetMap := fn()
+			value := valFunc(item)
+			targetMap[item.Key] = value
+		}
+	}
+
+	switch inp.BodyType {
+	case emptyBody:
+		return bodyTuple{}, nil
+	case jsonBody:
+		bodyData, err := obj.toData()
+		if err != nil {
+			return bodyTuple{}, fmt.Errorf("marshaling JSON of HTTP body: %v", err)
+		}
+
+		return bodyTuple{
+			content:     bodyData,
+			contentType: "application/json",
+		}, nil
+	case rawBody:
+		return bodyTuple{
+			content:     inp.StdinData,
+			contentType: "application/json",
+		}, nil
+	default:
+		return bodyTuple{}, fmt.Errorf("unknown body type: %v", inp.BodyType)
+	}
+}
+
+// itemVal is an itemValFunc type for the map `rules` in parseRequestBody.
+func itemVal(i item) string { return i.Val }
 
 func (r *request) parseQuery(inp *Input) (err error) {
 	query := r.URL.Query()
