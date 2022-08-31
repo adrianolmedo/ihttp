@@ -13,24 +13,24 @@ import (
 var reMethod = regexp.MustCompile(`^[a-zA-Z]+$`)
 
 type Input struct {
-	Options   *Options
+	Options   Options
 	Method    string
 	URL       string
 	Items     []item // Used when BodyType is JSONBody or FormBody.
 	StdinData []byte
-	BodyType  BodyType
+	BodyType  bodyType
 }
 
-type BodyType int
+type bodyType int
 
 const (
-	EmptyBody BodyType = iota
-	JSONBody
-	FormBody
-	RawBody
+	emptyBody bodyType = iota
+	jsonBody
+	formBody
+	rawBody
 )
 
-func ParseArgs(args []string, stdin io.Reader, opts *Options) (*Input, error) {
+func NewInput(args []string, stdin io.Reader, opts ...Options) (*Input, error) {
 	var method, url string
 	var items []string
 
@@ -53,9 +53,16 @@ func ParseArgs(args []string, stdin io.Reader, opts *Options) (*Input, error) {
 		}
 	}
 
-	inp := Input{Options: opts}
+	var inp Input
+	for _, o := range opts {
+		if err := o.IsValid(); err != nil {
+			return nil, err
+		}
 
-	err := inp.processItems(items, stdin)
+		inp = Input{Options: o}
+	}
+
+	err := inp.processItems(items)
 	if err != nil {
 		return nil, err
 	}
@@ -80,15 +87,15 @@ func ParseArgs(args []string, stdin io.Reader, opts *Options) (*Input, error) {
 
 // getBodyType works as determinePreferredBodyType in httpie-go and estimate
 // the BodyType from opts values.
-func getBodyType(opts *Options) BodyType {
+func getBodyType(opts Options) bodyType {
 	if opts.Form {
-		return FormBody
+		return formBody
 	} else {
-		return JSONBody
+		return jsonBody
 	}
 }
 
-func (inp *Input) processItems(items []string, stdin io.Reader) (err error) {
+func (inp *Input) processItems(items []string) (err error) {
 	if len(items) >= 1 {
 		// BUG: When pass the flag -form the inp.BodyType is not setting to JSONBody.
 		// That is...
@@ -110,11 +117,11 @@ func (inp *Input) processItems(items []string, stdin io.Reader) (err error) {
 			}
 
 			if inp.Items[i].Sep == SepDataRawJSON {
-				inp.BodyType = JSONBody
+				inp.BodyType = jsonBody
 			}
 
 			if inp.Items[i].Sep == SepFileUpload {
-				inp.BodyType = FormBody
+				inp.BodyType = formBody
 			}
 		}
 	}
@@ -131,11 +138,11 @@ func (inp *Input) processStdin(stdin io.Reader) error {
 	// The next line works as options.ReadStdin && !state.stdinConsume in httpie-go.
 	if (stat.Mode() & os.ModeCharDevice) == 0 {
 		// These two approaches for specifying request item (i.e., structured and raw) cannot be combined.
-		if inp.BodyType != EmptyBody {
+		if inp.BodyType != emptyBody {
 			return errors.New("request body (from stdin) and request item (key=value) cannot be mixed")
 		}
 
-		inp.BodyType = RawBody
+		inp.BodyType = rawBody
 		inp.StdinData, err = io.ReadAll(stdin)
 		if err != nil {
 			return err
@@ -158,8 +165,8 @@ func (inp *Input) processMethod(method string) error {
 	return nil
 }
 
-func guessMethod(bodyType BodyType) string {
-	if bodyType == EmptyBody {
+func guessMethod(bodyType bodyType) string {
+	if bodyType == emptyBody {
 		return http.MethodGet
 	} else {
 		return http.MethodPost
