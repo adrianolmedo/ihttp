@@ -1,4 +1,4 @@
-package output
+package ihttp
 
 import (
 	"bufio"
@@ -10,19 +10,17 @@ import (
 	"sort"
 	"strings"
 	"time"
-
-	"github.com/adrianolmedo/ihttp"
 )
 
 type Output struct {
 	Request *http.Request
-	Options *ihttp.Options
+	Options Options
 
 	sb  strings.Builder
 	err error
 }
 
-func New(req *http.Request, opts *ihttp.Options) (*Output, error) {
+func NewOutput(req *http.Request, opts Options) (*Output, error) {
 	o := &Output{Request: req, Options: opts}
 
 	if o.Options.Verbose {
@@ -103,7 +101,7 @@ func (o *Output) writeRequestBody(r *http.Request) {
 		if isJSON(bytes.NewBuffer(bodyData)) {
 			bodyBuf := &bytes.Buffer{}
 
-			if err := json.Indent(bodyBuf, bodyData, "", ihttp.TabSpaces); err != nil {
+			if err := json.Indent(bodyBuf, bodyData, "", TabSpaces); err != nil {
 				return err
 			}
 
@@ -171,7 +169,7 @@ func (o *Output) writeResponseBody(r *http.Response) {
 		var body string
 		if strings.Contains(r.Header.Get("content-type"), "application/json") && isJSON(r.Body) {
 			bodyBuf := &bytes.Buffer{}
-			if err := json.Indent(bodyBuf, bodyData, "", ihttp.TabSpaces); err != nil {
+			if err := json.Indent(bodyBuf, bodyData, "", TabSpaces); err != nil {
 				return err
 			}
 

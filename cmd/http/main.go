@@ -7,7 +7,6 @@ import (
 	"path/filepath"
 
 	"github.com/adrianolmedo/ihttp"
-	"github.com/adrianolmedo/ihttp/output"
 )
 
 var usage = `Usage:
@@ -52,19 +51,15 @@ func main() {
 	flag.Parse()
 
 	// Set Option values from the flags:
-	opts := &ihttp.Options{
+	opts := ihttp.Options{
 		JSON:    *json,
 		Form:    *form,
 		Verbose: *verbose,
 	}
 	opts.SetScheme(*scheme)
 
-	if err := opts.IsValid(); err != nil {
-		errAndExit(err)
-	}
-
 	// Parse args to Input values.
-	inp, err := ihttp.ParseArgs(flag.Args(), os.Stdin, opts)
+	inp, err := ihttp.NewInput(flag.Args(), os.Stdin, opts)
 	if err != nil {
 		errAndExit(err)
 	}
@@ -87,7 +82,7 @@ func main() {
 		errAndExit(err)
 	}
 
-	out, err := output.New(req, opts)
+	out, err := ihttp.NewOutput(req, opts)
 	if err != nil {
 		errAndExit(err)
 	}
@@ -95,13 +90,13 @@ func main() {
 	fmt.Fprint(os.Stdout, out)
 }
 
-func usageAndExit(msg string) {
+/*func usageAndExit(msg string) {
 	flag.Usage()
 	if msg != "" {
 		fmt.Fprintln(os.Stderr, "\nerror:", msg)
 	}
 	os.Exit(1)
-}
+}*/
 
 func errAndExit(err error) {
 	fmt.Fprintln(os.Stderr, "error:", err)
