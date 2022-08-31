@@ -9,7 +9,7 @@ import (
 
 // dbug debug output when Options.Debug is true.
 type dbug struct {
-	opts *ihttp.Options
+	opts ihttp.Options
 	inp  *ihttp.Input
 }
 
