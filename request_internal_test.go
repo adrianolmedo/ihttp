@@ -1,6 +1,8 @@
 package ihttp
 
 import (
+	"net/http"
+	"net/url"
 	"reflect"
 	"testing"
 )
@@ -16,7 +18,7 @@ func TestParseRequestBody(t *testing.T) {
 			args: []string{"url", "data=field"},
 			want: bodyTuple{
 				content:     nil,
-				contentType: "application/json",
+				contentType: "",
 			},
 		},
 		{
@@ -24,7 +26,7 @@ func TestParseRequestBody(t *testing.T) {
 			args: []string{"url", "data=field", "query==value"},
 			want: bodyTuple{
 				content:     nil,
-				contentType: "application/json",
+				contentType: "",
 			},
 		},
 	}
@@ -48,7 +50,7 @@ func TestParseRequestBody(t *testing.T) {
 	}
 }
 
-/*func TestParseRequestHeaders(t *testing.T) {
+func TestParseHeaders(t *testing.T) {
 	tt := []struct {
 		name        string
 		args        []string
@@ -57,7 +59,7 @@ func TestParseRequestBody(t *testing.T) {
 	}{
 		{
 			name: "Header:value",
-			args: []string{"url", "Header:value"},
+			args: []string{"httpbingo.org/get", "Header:value"},
 			want: http.Header{
 				"Header": []string{"value"},
 			},
@@ -65,7 +67,7 @@ func TestParseRequestBody(t *testing.T) {
 		},
 		{
 			name: "Unset-Header:",
-			args: []string{"url", "Unset-Header:"},
+			args: []string{"httpbingo.org/get", "Unset-Header:"},
 			want: http.Header{
 				"Unset-Header": []string{""},
 			},
@@ -73,13 +75,13 @@ func TestParseRequestBody(t *testing.T) {
 		},
 		{
 			name:        "Empty-Header;",
-			args:        []string{"url", "Empty-Header;"},
+			args:        []string{"httpbingo.org/get", "Empty-Header;"},
 			want:        http.Header{},
 			errExpected: true,
 		},
 		{
 			name: "escape header separator",
-			args: []string{"url", `foo\:bar:baz`},
+			args: []string{"httpbingo.org/get", `foo\:bar:baz`},
 			want: http.Header{
 				"foo:bar": []string{"baz"},
 			},
@@ -87,7 +89,7 @@ func TestParseRequestBody(t *testing.T) {
 		},
 		{
 			name: "escape file upload separator",
-			args: []string{"url", `jack\@jill:hill`},
+			args: []string{"httpbingo.org/get", `jack\@jill:hill`},
 			want: http.Header{
 				"jack@jill": []string{"hill"},
 			},
@@ -95,7 +97,7 @@ func TestParseRequestBody(t *testing.T) {
 		},
 		{
 			name: "query==value Header:value",
-			args: []string{"url", "query==value", "Header:value"},
+			args: []string{"httpbingo.org/get", "query==value", "Header:value"},
 			want: http.Header{
 				"Header": []string{"value"},
 			},
@@ -103,34 +105,50 @@ func TestParseRequestBody(t *testing.T) {
 		},
 	}
 
-	p := New()
+	/*inp := &Input{
+		Method: http.MethodGet,
+		URL:    "httpbingo.org/get",
+	}*/
+
 	for _, tc := range tt {
 		t.Run(tc.name, func(t *testing.T) {
-			err := p.parseItems(tc.args)
+			/*err := inp.parseItems(tc.args)
+			if err != nil {
+				t.Fatal(err)
+			}*/
+
+			/*req, err := NewRequest(inp)
+			if err != nil {
+				t.Fatal(err)
+			}*/
+
+			inp, err := NewInput(tc.args, nil)
 			if err != nil {
 				t.Fatal(err)
 			}
 
-			p.req, err = http.NewRequest("GET", "httpbingo.org/get", nil)
+			req, err := http.NewRequest(inp.Method, inp.URL, nil)
 			if err != nil {
 				t.Fatal(err)
 			}
 
-			err = p.parseRequestHeaders()
+			r := &request{req}
+
+			err = r.parseHeaders(inp)
 			if (err != nil) != tc.errExpected {
 				t.Fatalf("%s: unexpected error status: %v", tc.name, err)
 			}
 
-			got := p.req.Header
+			got := r.Request.Header
 			if !tc.errExpected && !reflect.DeepEqual(tc.want, got) {
 				t.Errorf("%s\nwant\t%#v\ngot\t%#v", tc.name, tc.want, got)
 			}
 		})
 	}
-}*/
+}
 
 // TestParseParams
-/*func TestParseRequestQuery(t *testing.T) {
+func TestParseQuery(t *testing.T) {
 	tt := []struct {
 		name string
 		args []string
@@ -138,41 +156,50 @@ func TestParseRequestBody(t *testing.T) {
 	}{
 		{
 			name: "query==value",
-			args: []string{"url", "query==value"},
+			args: []string{"httpbingo.org/get", "query==value"},
 			want: url.Values{
 				"query": []string{"value"},
 			},
 		},
 		{
 			name: "data=field query==value",
-			args: []string{"url", "data=field", "query==value"},
+			args: []string{"httpbingo.org/get", "data=field", "query==value"},
 			want: url.Values{
 				"query": []string{"value"},
 			},
 		},
 	}
 
-	p := New()
 	for _, tc := range tt {
 		t.Run(tc.name, func(t *testing.T) {
-			err := p.parseItems(tc.args)
+			/*err := p.parseItems(tc.args)
+			if err != nil {
+				t.Fatal(err)
+			}*/
+
+			inp, err := NewInput(tc.args, nil)
 			if err != nil {
 				t.Fatal(err)
 			}
 
-			p.req, err = http.NewRequest("GET", "httpbingo.org/get", nil)
+			req, err := http.NewRequest(inp.Method, inp.URL, nil)
 			if err != nil {
 				t.Fatal(err)
 			}
 
-			p.parseRequestQuery()
-			//fmt.Printf("URL      %+v\n", p.Request.URL)          // httpbingo.org/get?query=value
-			//fmt.Printf("RawQuery %+v\n", p.Request.URL.RawQuery) // query=value
-			//fmt.Printf("Query    %+v\n", p.Request.URL.Query())  // map[query:[value]]
-			got := p.req.URL.Query()
+			r := &request{req}
+
+			if err := r.parseQuery(inp); err != nil {
+				t.Fatal(err)
+			}
+
+			//fmt.Printf("URL      %+v\n", r.Request.URL)          // httpbingo.org/get?query=value
+			//fmt.Printf("RawQuery %+v\n", r.Request.URL.RawQuery) // query=value
+			//fmt.Printf("Query    %+v\n", r.Request.URL.Query())  // map[query:[value]]
+			got := r.Request.URL.Query()
 			if !reflect.DeepEqual(tc.want, got) {
 				t.Errorf("%s want %#v got %#v", tc.name, tc.want, got)
 			}
 		})
 	}
-}*/
+}
