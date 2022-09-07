@@ -29,7 +29,7 @@ type item struct {
 // The back slash escaped characters aren't considered as seps (or parts
 // thereof). Literal back slash characters have to be escaped as well (`\\`).
 //
-// parseItem is used internally to parse items in Parser.
+// parseItem is used internally to parse items in parseItems method of Input.
 func parseItem(arg string, seps []string) (item, error) {
 	var sep, key, value string
 

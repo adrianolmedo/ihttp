@@ -12,6 +12,7 @@ type request struct {
 	*http.Request
 }
 
+// NewRequest builds and start process to return HTTP Request from inp values.
 func NewRequest(inp *Input) (*http.Request, error) {
 	b, err := parseRequestBody(inp)
 	if err != nil {
@@ -65,7 +66,7 @@ func (oj objectJSON) toData() (data []byte, err error) {
 
 type itemValFunc func(item) string
 
-// parseRequestBody parse Key and Val fields from the data separators to objectJSON
+// parseRequestBody parse Key and Val fields from inp.Items to objectJSON
 // (that it could be later encode to JSON format data for the `body` argument
 // to http.NewRequest).
 //
@@ -114,6 +115,10 @@ func parseRequestBody(inp *Input) (bodyTuple, error) {
 // itemVal is an itemValFunc type for the map `rules` in parseRequestBody.
 func itemVal(i item) string { return i.Val }
 
+// parseQuery add the Key and Val values from inp.Items to the URL Query string
+// (type url.Values) of the HTTP Request using its Add method.
+//
+// TODO: Try to do this with generics.
 func (r *request) parseQuery(inp *Input) (err error) {
 	query := r.URL.Query()
 
@@ -137,6 +142,11 @@ func (r *request) parseQuery(inp *Input) (err error) {
 
 type itemValWithErrFunc func(item) (string, error)
 
+// parseHeaders add the Key and Val values from inp.Items to Header of the HTTP
+// Request using its Add, otherwise it will return error from some
+// itemValWithErrFunc.
+//
+// TODO: Try to do this with generics.
 func (r *request) parseHeaders(inp *Input) error {
 	var rules interface{} = map[string]interface{}{
 		SepHeader: func() (itemValWithErrFunc, http.Header) {
@@ -161,7 +171,7 @@ func (r *request) parseHeaders(inp *Input) error {
 	return nil
 }
 
-// headerVal is an itemValWithErrFunc type for the map `rules` in parseRequestHeaders.
+// headerVal is an itemValWithErrFunc type for the map `rules` in parseHeaders.
 func itemHeaderVal(i item) (string, error) { return i.Val, nil }
 
 // emptyHeaderVal is an itemValWithErrFunc type for the map `rules` in

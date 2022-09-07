@@ -10,17 +10,6 @@ import (
 	"strings"
 )
 
-var reMethod = regexp.MustCompile(`^[a-zA-Z]+$`)
-
-type Input struct {
-	Options   Options
-	Method    string
-	URL       string
-	Items     []item // Used when BodyType is JSONBody or FormBody.
-	StdinData []byte
-	BodyType  bodyType
-}
-
 type bodyType int
 
 const (
@@ -30,6 +19,20 @@ const (
 	rawBody
 )
 
+var reMethod = regexp.MustCompile(`^[a-zA-Z]+$`)
+
+// Input represent the input values from flags, cli args or stdin like pipelines.
+type Input struct {
+	Options   Options
+	Method    string
+	URL       string
+	Items     []item // Used when BodyType is JSONBody or FormBody.
+	StdinData []byte
+	BodyType  bodyType
+}
+
+// NewInput return an Input pointer after parsing args o stdin value
+// condicionated by the value flags from opts, otherwise return error.
 func NewInput(args []string, stdin io.Reader, opts ...Options) (*Input, error) {
 	var method, url string
 	var items []string
@@ -86,7 +89,7 @@ func NewInput(args []string, stdin io.Reader, opts ...Options) (*Input, error) {
 }
 
 // getBodyType works as determinePreferredBodyType in httpie-go and estimate
-// the BodyType from opts values.
+// the bodyType from opts values.
 func getBodyType(opts Options) bodyType {
 	if opts.Form {
 		return formBody
@@ -95,6 +98,7 @@ func getBodyType(opts Options) bodyType {
 	}
 }
 
+// processItems parse each items as item struture.
 func (inp *Input) processItems(items []string) (err error) {
 	if len(items) >= 1 {
 		// BUG: When pass the flag -form the inp.BodyType is not setting to JSONBody.
@@ -152,6 +156,7 @@ func (inp *Input) processStdin(stdin io.Reader) error {
 	return nil
 }
 
+// processMethod set HTTP Method.
 func (inp *Input) processMethod(method string) error {
 	if method != "" {
 		if !reMethod.MatchString(method) {
@@ -173,7 +178,7 @@ func guessMethod(bodyType bodyType) string {
 	}
 }
 
-// processURL works as parseURL in httpie-go.
+// processURL set URL value, works as parseURL in httpie-go.
 func (inp *Input) processURL(url string) error {
 	// Prepare the url for add the scheme: `http ://domain.com` → `http://domain.com`.
 	url = strings.TrimPrefix(url, "://")

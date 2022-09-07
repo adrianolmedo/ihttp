@@ -12,6 +12,10 @@ import (
 	"time"
 )
 
+// Output write and represent the HTTP Response builded from Request.
+//
+// Output has strings.Builder for design an output string for os.Stdout
+// and catch an error during its processes for os.Stderr.
 type Output struct {
 	Request *http.Request
 	Options Options
@@ -20,6 +24,7 @@ type Output struct {
 	err error
 }
 
+// NewOutput return a new Output.
 func NewOutput(req *http.Request, opts Options) (*Output, error) {
 	o := &Output{Request: req, Options: opts}
 
@@ -183,8 +188,8 @@ func (o *Output) writeResponseBody(r *http.Response) {
 	})
 }
 
-// String return the HTTP Response and depending on the Options values it will
-// also include debug or HTTP Request output if Options.Verbose is true.
+// String return the HTTP Response as string and depending on the Options
+// values it will also include the HTTP Request output if Options.Verbose is true.
 func (o *Output) String() string {
 	return o.sb.String()
 }
