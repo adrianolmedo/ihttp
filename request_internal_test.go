@@ -105,23 +105,8 @@ func TestParseHeaders(t *testing.T) {
 		},
 	}
 
-	/*inp := &Input{
-		Method: http.MethodGet,
-		URL:    "httpbingo.org/get",
-	}*/
-
 	for _, tc := range tt {
 		t.Run(tc.name, func(t *testing.T) {
-			/*err := inp.parseItems(tc.args)
-			if err != nil {
-				t.Fatal(err)
-			}*/
-
-			/*req, err := NewRequest(inp)
-			if err != nil {
-				t.Fatal(err)
-			}*/
-
 			inp, err := NewInput(tc.args, nil)
 			if err != nil {
 				t.Fatal(err)
@@ -172,11 +157,6 @@ func TestParseQuery(t *testing.T) {
 
 	for _, tc := range tt {
 		t.Run(tc.name, func(t *testing.T) {
-			/*err := p.parseItems(tc.args)
-			if err != nil {
-				t.Fatal(err)
-			}*/
-
 			inp, err := NewInput(tc.args, nil)
 			if err != nil {
 				t.Fatal(err)

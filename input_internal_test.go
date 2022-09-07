@@ -7,10 +7,9 @@ import (
 
 func TestProcessURL(t *testing.T) {
 	tt := []struct {
-		name        string
-		args        []string
-		want        string
-		errExpected bool
+		name string
+		args []string
+		want string
 	}{
 		{
 			name: "http localhost",
@@ -73,12 +72,12 @@ func TestProcessURL(t *testing.T) {
 	for _, tc := range tt {
 		t.Run(tc.name, func(t *testing.T) {
 			err := inp.processURL(tc.args[0])
-			if (err != nil) != tc.errExpected {
-				t.Fatalf("%s: unexpected error status: %v", tc.name, err)
+			if err != nil {
+				t.Fatal(err)
 			}
 
 			got := inp.URL
-			if !tc.errExpected && tc.want != got {
+			if tc.want != got {
 				t.Errorf("\narg: %s\n%s: want %q, got %q,", tc.args[0], tc.name, tc.want, got)
 			}
 		})
@@ -87,11 +86,10 @@ func TestProcessURL(t *testing.T) {
 
 func TestProcessURLWithHTTPS(t *testing.T) {
 	tt := []struct {
-		name        string
-		args        []string
-		scheme      string
-		want        string
-		errExpected bool
+		name   string
+		args   []string
+		scheme string
+		want   string
 	}{
 		{
 			name:   "https localhost",
@@ -114,12 +112,12 @@ func TestProcessURLWithHTTPS(t *testing.T) {
 			inp := Input{Options: opts}
 
 			err := inp.processURL(tc.args[0])
-			if (err != nil) != tc.errExpected {
-				t.Fatalf("%s: unexpected error status: %v", tc.name, err)
+			if err != nil {
+				t.Fatal(err)
 			}
 
 			got := inp.URL
-			if !tc.errExpected && tc.want != got {
+			if tc.want != got {
 				t.Errorf("\narg: %s\n%s: want %q, got %q,", tc.args[0], tc.name, tc.want, got)
 			}
 		})
