@@ -2,7 +2,7 @@
 # iHTTP
 
 A simple and lightweight HTTP Client, fully using the Golang standard library net/http package as a CLI tool, 
-inspired in [HTTPie](https://github.com/httpie/httpie) and [httpie-go](https://github.com/nojima/httpie-go) from @nojima.
+inspired in [HTTPie](https://github.com/httpie/httpie) and [httpie-go](https://github.com/nojima/httpie-go).
 
 ![](https://i.imgur.com/yzht15h.gif)
 
