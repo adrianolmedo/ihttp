@@ -140,7 +140,8 @@ func (inp *Input) processStdin(stdin io.Reader) error {
 
 	// The next line works as options.ReadStdin && !state.stdinConsume in httpie-go.
 	if (stat.Mode() & os.ModeCharDevice) == 0 {
-		// These two approaches for specifying request item (i.e., structured and raw) cannot be combined.
+		// These two approaches for specifying request item (i.e., structured and raw)
+		// cannot be combined.
 		if inp.BodyType != emptyBody {
 			return errors.New("request body (from stdin) and request item (key=value) cannot be mixed")
 		}
