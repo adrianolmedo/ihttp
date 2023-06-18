@@ -45,12 +45,12 @@ func NewInput(args []string, stdin io.Reader, opts ...Options) (*Input, error) {
 		url = args[0]
 	default:
 		if reMethod.MatchString(args[0]) {
-			// Invoked as for example `$ http url foo=var field:value`:
+			// For example `$ http url foo=var field:value`:
 			method = args[0] // url
 			url = args[1]    // foo=var
 			items = args[2:] // field:value
 		} else {
-			// Invoked as for example `$ http url/get field:value`:
+			// For example `$ http url/get field:value`:
 			url = args[0]    // url/get
 			items = args[1:] // field:value
 		}
@@ -102,7 +102,6 @@ func getBodyType(opts Options) bodyType {
 func (inp *Input) processItems(items []string) (err error) {
 	if len(items) >= 1 {
 		// BUG: When pass the flag -form the inp.BodyType is not setting to JSONBody.
-		// That is...
 		bodyType := getBodyType(inp.Options)
 
 		seps := SepsGroupAllItems()
@@ -227,9 +226,9 @@ func (inp *Input) processURL(url string) error {
 // getShorthand see if we're using curl style shorthand for localhost, e.g.
 // :3000/foo, if is success it will be return a slice with following elements:
 //
-//    matches[0] :3000/foo
-//    matches[1] :3000
-//    matches[2] foo
+//	matches[0] :3000/foo
+//	matches[1] :3000
+//	matches[2] foo
 //
 // Or nil and err otherwise.
 func getShorthand(url string) (matches []string, err error) {

@@ -126,12 +126,11 @@ func isJSON(r io.Reader) bool {
 	for {
 		_, err := dec.Token()
 		if err == io.EOF {
-			//break
-			return true // end of input, valid JSON
+			return true // end of input
 		}
 
 		if err != nil {
-			return false // invalid JSON
+			return false
 		}
 	}
 }
@@ -188,8 +187,8 @@ func (o *Output) writeResponseBody(r *http.Response) {
 	})
 }
 
-// String return the HTTP Response as string and depending on the Options
-// values it will also include the HTTP Request output if Options.Verbose is true.
+// String return the HTTP Response as string and depending of Options
+// values, it will also include the HTTP Request output if Options.Verbose is true.
 func (o *Output) String() string {
 	return o.sb.String()
 }
