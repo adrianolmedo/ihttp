@@ -22,6 +22,27 @@ type item struct {
 	Arg string
 }
 
+// find map for mark seperators found tokenize algorithm.
+type find map[int]string
+
+// min returns smallest key.
+func (f find) min() int {
+	// Make integer list of found map keys, where they will be stored.
+	keys := make([]int, 0, len(f))
+	for k := range f {
+		keys = append(keys, k)
+	}
+
+	// Set the smallest number to the first element of the list.
+	smallest := keys[0]
+	for _, key := range keys[1:] {
+		if key < smallest {
+			smallest = key
+		}
+	}
+	return smallest
+}
+
 // parseItem parse a raw string argument that it contains a separator
 // represented in the group of seperators (seps): headers, form data
 // (body request) and other key-value pair types.
@@ -90,11 +111,11 @@ func parseItem(arg string, seps []string) (item, error) {
 // tokenize tokenize the raw arg string. There are only two token types,
 // strings and escaped characters, usage example:
 //
-//     tokenize(`foo\=bar\\baz`, []string{"="}):
+//	tokenize(`foo\=bar\\baz`, []string{"="}):
 //
 // Result:
 //
-//     [foo = bar\\baz]
+//	[foo = bar\\baz]
 func tokenize(arg string, seps []string) []interface{} {
 	var tokens = []interface{}{""}
 	var i int
@@ -126,27 +147,6 @@ func tokenize(arg string, seps []string) []interface{} {
 		i++
 	}
 	return tokens
-}
-
-// find map for mark seperators found tokenize algorithm.
-type find map[int]string
-
-// min returns smallest key.
-func (f find) min() int {
-	// Make integer list of found map keys, where they will be stored.
-	keys := make([]int, 0, len(f))
-	for k := range f {
-		keys = append(keys, k)
-	}
-
-	// Set the smallest number to the first element of the list.
-	smallest := keys[0]
-	for _, key := range keys[1:] {
-		if key < smallest {
-			smallest = key
-		}
-	}
-	return smallest
 }
 
 // toStrSlice return elements from i in a string slice.
