@@ -108,6 +108,17 @@ func parseItem(arg string, seps []string) (item, error) {
 	}, nil
 }
 
+// toStrSlice return elements from i in a string slice.
+func toStrSlice(i []interface{}) []string {
+	ss := make([]string, len(i))
+	for k, v := range i {
+		if s, ok := v.(string); ok {
+			ss[k] = s
+		}
+	}
+	return ss
+}
+
 // tokenize tokenize the raw arg string. There are only two token types,
 // strings and escaped characters, usage example:
 //
@@ -147,17 +158,6 @@ func tokenize(arg string, seps []string) []interface{} {
 		i++
 	}
 	return tokens
-}
-
-// toStrSlice return elements from i in a string slice.
-func toStrSlice(i []interface{}) []string {
-	ss := make([]string, len(i))
-	for k, v := range i {
-		if s, ok := v.(string); ok {
-			ss[k] = s
-		}
-	}
-	return ss
 }
 
 // inStrSlice return true if str is present in slice.
