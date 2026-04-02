@@ -1,3 +1,3 @@
 module github.com/adrianolmedo/ihttp
 
-go 1.17
+go 1.25
