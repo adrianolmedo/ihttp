@@ -50,7 +50,7 @@ func (f find) min() int {
 // The back slash escaped characters aren't considered as seps (or parts
 // thereof). Literal back slash characters have to be escaped as well (`\\`).
 //
-// parseItem is used internally to parse items in parseItems method of Input.
+// parseItem is used internally to parse items in [Input.processItems] method.
 func parseItem(arg string, seps []string) (item, error) {
 	var sep, key, value string
 

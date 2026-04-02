@@ -41,16 +41,16 @@ func NewInput(args []string, stdin io.Reader, opts ...Options) (*Input, error) {
 	case 0:
 		return nil, errors.New("URL is required")
 	case 1:
-		// Invoked as `$ http url`:
+		// Invoked as `$ http url`
 		url = args[0]
 	default:
 		if reMethod.MatchString(args[0]) {
-			// For example `$ http url foo=var field:value`:
+			// For example `$ http url foo=var field:value`
 			method = args[0] // url
 			url = args[1]    // foo=var
 			items = args[2:] // field:value
 		} else {
-			// For example `$ http url/get field:value`:
+			// For example `$ http url/get field:value`
 			url = args[0]    // url/get
 			items = args[1:] // field:value
 		}
