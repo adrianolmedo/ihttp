@@ -122,7 +122,7 @@ func toStrSlice(i []interface{}) []string {
 // tokenize tokenize the raw arg string. There are only two token types,
 // strings and escaped characters, usage example:
 //
-//	tokenize(`foo\=bar\\baz`, []string{"="}):
+//	tokenize(`foo\=bar\\baz`, []string{"="})
 //
 // Result:
 //
