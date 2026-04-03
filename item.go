@@ -27,20 +27,18 @@ type find map[int]string
 
 // min returns smallest key.
 func (f find) min() int {
-	// Make integer list of found map keys, where they will be stored.
-	keys := make([]int, 0, len(f))
-	for k := range f {
-		keys = append(keys, k)
+	if len(f) == 0 {
+		return -1
 	}
-
-	// Set the smallest number to the first element of the list.
-	smallest := keys[0]
-	for _, key := range keys[1:] {
-		if key < smallest {
-			smallest = key
+	minKey := -1
+	first := true
+	for k := range f {
+		if first || k < minKey {
+			minKey = k
+			first = false
 		}
 	}
-	return smallest
+	return minKey
 }
 
 // parseItem parse a raw string argument that it contains a separator
@@ -109,7 +107,7 @@ func parseItem(arg string, seps []string) (item, error) {
 }
 
 // toStrSlice return elements from i in a string slice.
-func toStrSlice(i []interface{}) []string {
+func toStrSlice(i []any) []string {
 	ss := make([]string, len(i))
 	for k, v := range i {
 		if s, ok := v.(string); ok {
@@ -127,8 +125,8 @@ func toStrSlice(i []interface{}) []string {
 // Result:
 //
 //	[foo = bar\\baz]
-func tokenize(arg string, seps []string) []interface{} {
-	var tokens = []interface{}{""}
+func tokenize(arg string, seps []string) []any {
+	var tokens = []any{""}
 	var i int
 
 	for i < len(arg) {
