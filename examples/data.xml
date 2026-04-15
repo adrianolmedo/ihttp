@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<httpie:httpie xmlns:httpie="https://httpie.org/">
+    <httpie:says>Hello, World!</httpie:says>
+</httpie:httpie>
