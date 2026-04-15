@@ -67,7 +67,6 @@ func TestProcessURL(t *testing.T) {
 			want: "http://0000:0000:0000:0000:0000:0000:0000:0001",
 		},
 	}
-
 	inp := &Input{}
 	for _, tc := range tt {
 		t.Run(tc.name, func(t *testing.T) {
@@ -75,7 +74,6 @@ func TestProcessURL(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-
 			got := inp.URL
 			if tc.want != got {
 				t.Errorf("\narg: %s\n%s: want %q, got %q,", tc.args[0], tc.name, tc.want, got)
@@ -104,18 +102,15 @@ func TestProcessURLWithHTTPS(t *testing.T) {
 			want:   "https://domain.xxx/get",
 		},
 	}
-
 	opts := Options{}
 	for _, tc := range tt {
 		t.Run(tc.name, func(t *testing.T) {
 			opts.SetScheme(tc.scheme)
 			inp := Input{Options: opts}
-
 			err := inp.processURL(tc.args[0])
 			if err != nil {
 				t.Fatal(err)
 			}
-
 			got := inp.URL
 			if tc.want != got {
 				t.Errorf("\narg: %s\n%s: want %q, got %q,", tc.args[0], tc.name, tc.want, got)
@@ -148,6 +143,7 @@ func TestProcessItems(t *testing.T) {
 					Arg: "test:header",
 				},
 			},
+			errExpected: false,
 		},
 		{
 			name:        "Error localhost",
@@ -155,20 +151,11 @@ func TestProcessItems(t *testing.T) {
 			errExpected: true,
 		},
 		{
-			name: "query==value",
-			args: []string{"localhost", "query==value"},
-			want: []item{
-				{
-					Key: "query",
-					Val: "value",
-					Sep: "==",
-					Arg: "query==value",
-				},
-			},
+			name:        "query==value",
+			args:        []string{"localhost", "query==value"},
 			errExpected: true,
 		},
 	}
-
 	inp := &Input{}
 	for _, tc := range tt {
 		t.Run(tc.name, func(t *testing.T) {
@@ -176,10 +163,84 @@ func TestProcessItems(t *testing.T) {
 			if (err != nil) != tc.errExpected {
 				t.Fatalf("%s: unexpected error status: %v", tc.name, err)
 			}
-
 			got := inp.Items
 			if !tc.errExpected && !reflect.DeepEqual(tc.want, got) {
 				t.Errorf("%s\nwant\t%#v\ngot\t%#v", tc.args, tc.want, got)
+			}
+		})
+	}
+}
+
+func TestDetectBodyType(t *testing.T) {
+	tests := []struct {
+		name  string
+		items []item
+		opts  Options
+		want  BodyType
+	}{
+		{
+			name: "empty",
+			want: EmptyBody,
+		},
+		{
+			name: "data string default json",
+			items: []item{
+				{Sep: "="},
+			},
+			want: JSONBody,
+		},
+		{
+			name: "raw json item",
+			items: []item{
+				{Sep: ":="},
+			},
+			want: JSONBody,
+		},
+		{
+			name: "file upload",
+			items: []item{
+				{Sep: "@"},
+			},
+			want: MultipartBody,
+		},
+		{
+			name: "file overrides json",
+			items: []item{
+				{Sep: ":="},
+				{Sep: "@"},
+			},
+			want: MultipartBody,
+		},
+		{
+			name: "flag form overrides items",
+			items: []item{
+				{Sep: ":="},
+			},
+			opts: Options{Form: true},
+			want: FormBody,
+		},
+		{
+			name: "flag multipart overrides all",
+			items: []item{
+				{Sep: "="},
+			},
+			opts: Options{Multipart: true},
+			want: MultipartBody,
+		},
+		{
+			name: "raw flag wins",
+			items: []item{
+				{Sep: "="},
+			},
+			opts: Options{Raw: "hello"},
+			want: RawBody,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := detectBodyType(tt.items, tt.opts)
+			if got != tt.want {
+				t.Errorf("want %v, got %v", tt.want, got)
 			}
 		})
 	}

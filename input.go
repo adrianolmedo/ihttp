@@ -10,33 +10,52 @@ import (
 	"strings"
 )
 
-type bodyType int
+type BodyType int
+
+func (b BodyType) String() string {
+	switch b {
+	case EmptyBody:
+		return "empty"
+	case JSONBody:
+		return "json"
+	case FormBody:
+		return "form"
+	case MultipartBody:
+		return "multipart"
+	case RawBody:
+		return "raw"
+	default:
+		return "unknown"
+	}
+}
 
 const (
-	emptyBody bodyType = iota
-	jsonBody
-	formBody
-	rawBody
+	EmptyBody     BodyType = iota
+	JSONBody               // application/json
+	FormBody               // application/x-www-form-urlencoded
+	MultipartBody          // multipart/form-data
+	RawBody                // application/octet-stream o detectado
 )
 
 var reMethod = regexp.MustCompile(`^[a-zA-Z]+$`)
+var reScheme = regexp.MustCompile("^[a-z][a-z0-9.+-]*://")
+var reShorthand = regexp.MustCompile(`^:(\d*)(\/?.*)$`)
 
 // Input represent the input values from flags, cli args or stdin like pipelines.
 type Input struct {
 	Options   Options
 	Method    string
 	URL       string
-	Items     []item // Used when BodyType is JSONBody or FormBody.
+	Items     []item // Used when the BodyType is JSONBody or FormBody.
 	StdinData []byte
-	BodyType  bodyType
+	BodyType  BodyType
 }
 
 // NewInput return an Input pointer after parsing args o stdin value
 // condicionated by the value flags from opts, otherwise return error.
-func NewInput(args []string, stdin io.Reader, opts ...Options) (*Input, error) {
+func NewInput(args []string, stdin io.Reader, opts Options) (*Input, error) {
 	var method, url string
 	var items []string
-
 	switch len(args) {
 	case 0:
 		return nil, errors.New("URL is required")
@@ -55,123 +74,158 @@ func NewInput(args []string, stdin io.Reader, opts ...Options) (*Input, error) {
 			items = args[1:] // field:value
 		}
 	}
-
-	var inp Input
-	for _, o := range opts {
-		if err := o.IsValid(); err != nil {
-			return nil, err
-		}
-
-		inp = Input{Options: o}
+	if err := opts.IsValid(); err != nil {
+		return nil, err
 	}
-
-	err := inp.processItems(items)
+	in := Input{Options: opts}
+	// parse args to items
+	err := in.processItems(items)
 	if err != nil {
 		return nil, err
 	}
-
-	err = inp.processStdin(stdin)
+	// infer body type by items and options flags
+	in.processBodyType()
+	// handle raw/stdin
+	err = in.processStdin(stdin)
 	if err != nil {
 		return nil, err
 	}
-
-	err = inp.processMethod(method)
+	err = in.processMethod(method)
 	if err != nil {
 		return nil, err
 	}
-
-	err = inp.processURL(url)
+	err = in.processURL(url)
 	if err != nil {
 		return nil, err
 	}
-
-	return &inp, nil
-}
-
-// getBodyType works as determinePreferredBodyType in httpie-go and estimate
-// the bodyType from opts values.
-func getBodyType(opts Options) bodyType {
-	if opts.Form {
-		return formBody
-	} else {
-		return jsonBody
-	}
+	return &in, nil
 }
 
 // processItems parse each items as item struture.
-func (inp *Input) processItems(items []string) (err error) {
-	if len(items) >= 1 {
-		// BUG: When pass the flag -form the inp.BodyType is not setting to JSONBody.
-		bodyType := getBodyType(inp.Options)
-
-		seps := SepsGroupAllItems()
-		inp.Items = make([]item, len(items))
-
-		for i := 0; i < len(items); i++ {
-			// parseItem works as splitItem in httpie-go.
-			// inp.Items[i] = Item, works as parseField in httpie-go.
-			inp.Items[i], err = parseItem(items[i], seps)
-			if err != nil {
-				return err
-			}
-
-			if inp.Items[i].Sep == SepDataString {
-				inp.BodyType = bodyType
-			}
-
-			if inp.Items[i].Sep == SepDataRawJSON {
-				inp.BodyType = jsonBody
-			}
-
-			if inp.Items[i].Sep == SepFileUpload {
-				inp.BodyType = formBody
-			}
-		}
+func (in *Input) processItems(items []string) error {
+	if len(items) == 0 {
+		return nil
 	}
-
+	in.Items = nil
+	seps := SepsGroupAllItems()
+	for _, raw := range items {
+		it, err := parseItem(raw, seps)
+		if err != nil {
+			return err
+		}
+		in.Items = append(in.Items, it)
+	}
 	return nil
 }
 
-func (inp *Input) processStdin(stdin io.Reader) error {
+// processBodyType set BodyType value by detect the items
+// with body type separators or options flags.
+func (in *Input) processBodyType() {
+	in.BodyType = detectBodyType(in.Items, in.Options)
+}
+
+func detectBodyType(items []item, opts Options) BodyType {
+	// 1. Explicitly by options flags, the priority order is: Raw > Multipart > Form > JSON.
+	if opts.Raw != "" {
+		return RawBody
+	}
+	if opts.Multipart {
+		return MultipartBody
+	}
+	if opts.Form {
+		return FormBody
+	}
+	if opts.JSON {
+		return JSONBody
+	}
+	// 2. Inference by items separators, the priority order is: Multipart > JSON > String.
+	var hasJSON, hasFile, hasData bool
+	for _, it := range items {
+		switch it.Sep {
+		case SepDataRawJSON:
+			hasJSON = true
+		case SepFileUpload:
+			hasFile = true
+		case SepDataString:
+			hasData = true
+		}
+	}
+	switch {
+	case hasFile:
+		return MultipartBody
+	case hasJSON:
+		return JSONBody
+	case hasData:
+		return JSONBody // important (in HTTPie is the default)
+	default:
+		return EmptyBody
+	}
+}
+
+// processStdin read the stdin data if exists and set BodyType to RawBody.
+// Also check that only one of the data sources is used: items, -raw or stdin.
+func (in *Input) processStdin(stdin io.Reader) error {
 	stat, err := os.Stdin.Stat()
 	if err != nil {
 		return err
 	}
-
-	// The next line works as options.ReadStdin && !state.stdinConsume in httpie-go.
-	if (stat.Mode() & os.ModeCharDevice) == 0 {
-		// These two approaches for specifying request item (i.e., structured and raw)
-		// cannot be combined.
-		if inp.BodyType != emptyBody {
-			return errors.New("request body (from stdin) and request item (key=value) cannot be mixed")
-		}
-
-		inp.BodyType = rawBody
-		inp.StdinData, err = io.ReadAll(stdin)
+	hasStdin := (stat.Mode() & os.ModeCharDevice) == 0
+	err = ensureOneDataSource(in.Items, in.Options, hasStdin)
+	if err != nil {
+		return err
+	}
+	// raw flag override
+	if in.Options.Raw != "" {
+		in.BodyType = RawBody
+		in.StdinData = []byte(in.Options.Raw)
+		return nil
+	}
+	if hasStdin {
+		in.BodyType = RawBody
+		in.StdinData, err = io.ReadAll(stdin)
 		if err != nil {
 			return err
 		}
 	}
-
 	return nil
 }
 
-// processMethod set HTTP Method.
-func (inp *Input) processMethod(method string) error {
-	if method != "" {
-		if !reMethod.MatchString(method) {
-			return fmt.Errorf("METHOD must consist of alphabet: %s", method)
-		}
-
-		inp.Method = strings.ToUpper(method)
-	} else {
-		inp.Method = guessMethod(inp.BodyType)
+// ensureOneDataSource it can only be one source of input request data.
+func ensureOneDataSource(items []item, opts Options, hasStdin bool) error {
+	hasItems := len(items) > 0
+	hasRaw := opts.Raw != ""
+	count := 0
+	if hasItems {
+		count++
+	}
+	if hasRaw {
+		count++
+	}
+	if hasStdin {
+		count++
+	}
+	if count > 1 {
+		return errors.New("request body (stdin, -raw, or file) and request items (key=value) cannot be mixed")
 	}
 	return nil
 }
 
-func guessMethod(bodyType bodyType) string {
-	if bodyType == emptyBody {
+// processMethod set HTTP Method.
+func (in *Input) processMethod(method string) error {
+	if method != "" {
+		if !reMethod.MatchString(method) {
+			return fmt.Errorf("METHOD must consist of alphabet: %s", method)
+		}
+		in.Method = strings.ToUpper(method)
+	} else {
+		in.Method = guessMethod(in.BodyType)
+	}
+	return nil
+}
+
+// guessMethod return the default HTTP Method by BodyType value.
+func guessMethod(bodyType BodyType) string {
+	if bodyType == EmptyBody {
 		return http.MethodGet
 	} else {
 		return http.MethodPost
@@ -179,38 +233,31 @@ func guessMethod(bodyType bodyType) string {
 }
 
 // processURL set URL value, works as parseURL in httpie-go.
-func (inp *Input) processURL(url string) error {
+func (in *Input) processURL(url string) error {
 	// Prepare the url for add the scheme: `http ://domain.com` → `http://domain.com`.
 	url = strings.TrimPrefix(url, "://")
-
-	reScheme, err := regexp.Compile("^[a-z][a-z0-9.+-]*://")
-	if err != nil {
-		return err
-	}
-
 	// Check scheme: if the URL doesn't specify the protocol,
 	// then precede it with http:// or https://
 	if !reScheme.MatchString(url) {
-		scheme := inp.Options.Scheme() + "://"
-		if inp.Options.Scheme() == "https" {
+		scheme := in.Options.Scheme() + "://"
+		if in.Options.Scheme() == "https" {
 			scheme = "https://"
 		}
-
-		sh, err := getShorthand(url)
-		if err != nil {
-			return err
-		}
-
+		// See if we're using curl style shorthand for localhost, e.g.
+		// :3000/foo, if is success it will be return a slice with following elements:
+		//
+		//	matches[0] :3000/foo
+		//	matches[1] :3000
+		//	matches[2] foo
+		sh := reShorthand.FindStringSubmatch(url)
 		if len(sh) == 3 {
 			port := sh[1]
 			rest := sh[2]
-
 			if strings.HasPrefix(url, "::") {
 				url = scheme + ":"
 			} else {
 				url = scheme + "localhost"
 			}
-
 			if port != "" {
 				url += ":" + port
 			}
@@ -219,23 +266,6 @@ func (inp *Input) processURL(url string) error {
 			url = scheme + url
 		}
 	}
-
-	inp.URL = url
+	in.URL = url
 	return nil
-}
-
-// getShorthand see if we're using curl style shorthand for localhost, e.g.
-// :3000/foo, if is success it will be return a slice with following elements:
-//
-//	matches[0] :3000/foo
-//	matches[1] :3000
-//	matches[2] foo
-//
-// Or nil and err otherwise.
-func getShorthand(url string) (matches []string, err error) {
-	rgx, err := regexp.Compile(`^:(\d*)(\/?.*)$`)
-	if err != nil {
-		return nil, err
-	}
-	return rgx.FindStringSubmatch(url), nil
 }
