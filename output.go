@@ -27,13 +27,10 @@ type Output struct {
 // NewOutput return a new Output.
 func NewOutput(req *http.Request, opts Options) (*Output, error) {
 	o := &Output{Request: req, Options: opts}
-
 	if o.Options.Verbose {
 		o.writeRequest()
 	}
-
 	o.writeResponse()
-
 	if o.err != nil {
 		return nil, o.err
 	}
@@ -73,18 +70,15 @@ func (o *Output) writeRequest() {
 		if err != nil {
 			return err
 		}
-
 		br := bufio.NewReader(bytes.NewReader(reqData))
 		r, err := http.ReadRequest(br)
 		if err != nil {
 			return err
 		}
-
 		o.sb.WriteString(r.Method + " " + r.URL.Path + " " + r.Proto + "\n")
 		if len(r.Header.Values("host")) == 0 && o.Request.URL.Host != "" {
 			r.Header.Add("Host", o.Request.URL.Host)
 		}
-
 		o.writeHeaders(r.Header)
 		o.writeRequestBody(r)
 		o.sb.WriteString("\n")
@@ -96,26 +90,21 @@ func (o *Output) writeRequest() {
 func (o *Output) writeRequestBody(r *http.Request) {
 	o.withErr(func() error {
 		defer r.Body.Close()
-
 		bodyData, err := io.ReadAll(r.Body)
 		if err != nil {
 			return err
 		}
-
 		var body string
 		if isJSON(bytes.NewBuffer(bodyData)) {
 			bodyBuf := &bytes.Buffer{}
-
 			if err := json.Indent(bodyBuf, bodyData, "", TabSpaces); err != nil {
 				return err
 			}
-
 			body = bodyBuf.String()
 		} else {
 			body = string(bodyData)
 		}
-
-		o.sb.WriteString("\n" + body)
+		o.sb.WriteString("\n" + body + "\n")
 		return nil
 	})
 }
@@ -128,7 +117,6 @@ func isJSON(r io.Reader) bool {
 		if err == io.EOF {
 			return true // end of input
 		}
-
 		if err != nil {
 			return false
 		}
@@ -143,7 +131,6 @@ func (o *Output) writeResponse() {
 		if err != nil {
 			return err
 		}
-
 		o.sb.WriteString(r.Proto + " " + r.Status + "\n")
 		o.writeHeaders(r.Header)
 		o.writeResponseBody(r)
@@ -156,7 +143,6 @@ func newResponse(req *http.Request) (*http.Response, error) {
 	client := &http.Client{
 		Timeout: time.Second * 30,
 	}
-
 	return client.Do(req)
 }
 
@@ -164,24 +150,20 @@ func newResponse(req *http.Request) (*http.Response, error) {
 func (o *Output) writeResponseBody(r *http.Response) {
 	o.withErr(func() error {
 		defer r.Body.Close()
-
 		bodyData, err := io.ReadAll(r.Body)
 		if err != nil {
 			return err
 		}
-
 		var body string
 		if strings.Contains(r.Header.Get("content-type"), "application/json") && isJSON(r.Body) {
 			bodyBuf := &bytes.Buffer{}
 			if err := json.Indent(bodyBuf, bodyData, "", TabSpaces); err != nil {
 				return err
 			}
-
 			body = bodyBuf.String()
 		} else {
 			body = string(bodyData)
 		}
-
 		o.sb.WriteString("\n" + body)
 		return nil
 	})
