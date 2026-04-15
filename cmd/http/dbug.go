@@ -15,16 +15,19 @@ type dbug struct {
 
 // opts only debug output of ihttp.Options.
 type opts struct {
-	Scheme  string
-	JSON    bool
-	Form    bool
-	Verbose bool
+	Scheme    string
+	JSON      bool
+	Form      bool
+	Multipart bool
+	Boundary  string
+	Raw       string
+	Verbose   bool
 }
 
 type inp struct {
 	Method    string
 	URL       string
-	BodyType  int
+	BodyType  string
 	StdinData []byte
 }
 
@@ -39,23 +42,24 @@ func (d *dbug) toString() (string, error) {
 		inp  `json:"Input"`
 	}{
 		opts: opts{
-			Scheme:  d.opts.Scheme(),
-			JSON:    d.opts.JSON,
-			Form:    d.opts.Form,
-			Verbose: d.opts.Verbose,
+			Scheme:    d.opts.Scheme(),
+			JSON:      d.opts.JSON,
+			Form:      d.opts.Form,
+			Multipart: d.opts.Multipart,
+			Boundary:  d.opts.Boundary,
+			Raw:       d.opts.Raw,
+			Verbose:   d.opts.Verbose,
 		},
 		inp: inp{
 			Method:    d.inp.Method,
 			URL:       d.inp.URL,
-			BodyType:  int(d.inp.BodyType),
+			BodyType:  d.inp.BodyType.String(),
 			StdinData: d.inp.StdinData,
 		},
 	}
-
 	debugData, err := json.MarshalIndent(dbg, "", ihttp.TabSpaces)
 	if err != nil {
 		return "", fmt.Errorf("debug print error: %v", err)
 	}
-
 	return string(debugData), nil
 }

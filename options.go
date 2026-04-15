@@ -4,10 +4,13 @@ import "errors"
 
 // Options represent the flags.
 type Options struct {
-	JSON    bool
-	Form    bool
-	Verbose bool
-	scheme  string
+	JSON      bool
+	Form      bool
+	Multipart bool
+	Boundary  string
+	Raw       string
+	Verbose   bool
+	scheme    string
 }
 
 // Scheme return the value of the scheme unexported field by defalut will
@@ -27,8 +30,8 @@ func (o *Options) SetScheme(s string) {
 
 // IsValid validate field values.
 func (o *Options) IsValid() error {
-	if o.JSON && o.Form {
-		return errors.New("you canot specify both of -json and -form")
+	if o.Boundary != "" && !o.Multipart {
+		return errors.New("-boundary requires -multipart")
 	}
 	return nil
 }

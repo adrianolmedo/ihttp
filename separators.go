@@ -1,5 +1,7 @@
 package ihttp
 
+import "sort"
+
 // Separator used in args as Items after the URL argument.
 const (
 	SepHeader      = ":"
@@ -26,18 +28,18 @@ const (
 
 // SepsGroupDataItems return separators for data type Items.
 func SepsGroupDataItems() []string {
-	return []string{
+	return sortSeps([]string{
 		SepDataString,
 		SepDataRawJSON,
 		SepFileUpload,
 		//SepDataEmbedFileContents,
 		//SepDataEmbedRawJSONFile,
-	}
+	})
 }
 
 // SepsGroupAllItems return separators for all types of Items.
 func SepsGroupAllItems() []string {
-	return []string{
+	return sortSeps([]string{
 		SepHeader,
 		SepHeaderEmpty,
 		//SepHeaderEmbed,
@@ -48,5 +50,17 @@ func SepsGroupAllItems() []string {
 		SepFileUpload,
 		//SepDataEmbedFileContents,
 		//SepDataEmbedRawJSONFile,
-	}
+	})
+}
+
+// sortSeps sorts separators by length in descending order
+// to ensure that longer separators are matched before shorter
+// ones during tokenization.
+func sortSeps(seps []string) []string {
+	out := make([]string, len(seps))
+	copy(out, seps)
+	sort.Slice(out, func(i, j int) bool {
+		return len(out[i]) > len(out[j])
+	})
+	return out
 }
