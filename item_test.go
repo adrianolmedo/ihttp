@@ -16,41 +16,40 @@ func TestTokenize(t *testing.T) {
 	tt := []struct {
 		name string
 		arg  string
-		want []interface{}
+		want []token
 	}{
 		{
 			name: "escape separator 1",
 			arg:  `foo\=bar\\baz`,
-			want: []interface{}{"foo", []byte("="), "bar\\\\baz"}},
+			want: []token{{value: "foo"}, {value: "=", escaped: true}, {value: "bar\\\\baz"}}},
 		{
 			name: "escape separator 2",
 			arg:  `foo\:bar:baz`,
-			want: []interface{}{"foo", []byte(":"), "bar:baz"}},
+			want: []token{{value: "foo"}, {value: ":", escaped: true}, {value: "bar:baz"}}},
 		{
 			// Backslash before non special character does not escaped
 			name: "escape separator 3",
 			arg:  "path\\==c:\\windows",
-			want: []interface{}{"path", []byte("="), "=c:\\windows"},
+			want: []token{{value: "path"}, {value: "=", escaped: true}, {value: "=c:\\windows"}},
 		},
 		{
 			// Backslash before non special character does not escaped
 			name: "does not escape 1",
 			arg:  "path=c:\\windows",
-			want: []interface{}{"path=c:\\windows"},
+			want: []token{{value: "path=c:\\windows"}},
 		},
 		{
 			// Backslash before non special character does not escaped
 			name: "does not escape 2",
 			arg:  "path=c:\\windows\\",
-			want: []interface{}{"path=c:\\windows\\"},
+			want: []token{{value: "path=c:\\windows\\"}},
 		},
 		{
 			name: "escape longsep",
 			arg:  `bob\:==foo`,
-			want: []interface{}{"bob", []byte(":"), "==foo"},
+			want: []token{{value: "bob"}, {value: ":", escaped: true}, {value: "==foo"}},
 		},
 	}
-
 	for _, tc := range tt {
 		t.Run(tc.name, func(t *testing.T) {
 			got := tokenize(tc.arg, sepsTest)
@@ -137,17 +136,25 @@ func TestParseItem(t *testing.T) {
 			},
 			errExpected: false,
 		},
+		{
+			name: "prefer longest separator at same position",
+			arg:  "foo==bar",
+			want: item{
+				Key: "foo",
+				Val: "bar",
+				Sep: "==",
+				Arg: "foo==bar",
+			},
+			errExpected: false,
+		},
 	}
-
 	for _, tc := range tt {
 		t.Run(tc.name, func(t *testing.T) {
 			got, err := parseItem(tc.arg, sepsTest)
 			errReceived := err != nil
-
 			if errReceived != tc.errExpected {
 				t.Fatalf("%s: %s: unexpected error status: %v", tc.name, tc.arg, err)
 			}
-
 			if !tc.errExpected && !reflect.DeepEqual(tc.want, got) {
 				t.Errorf("%s\nwant\t%#v\ngot\t%#v", tc.arg, tc.want, got)
 			}

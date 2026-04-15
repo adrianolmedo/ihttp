@@ -2,11 +2,10 @@ package ihttp
 
 import (
 	"fmt"
-	"sort"
 	"strings"
 )
 
-// Item a key-value pair struct for the arguments considered as ITEMS after
+// item a key-value pair struct for the arguments considered as ITEMS after
 // the URL.
 type item struct {
 	// Key represent the value string before of a separator.
@@ -22,23 +21,10 @@ type item struct {
 	Arg string
 }
 
-// find map for mark seperators found tokenize algorithm.
-type find map[int]string
-
-// min returns smallest key.
-func (f find) min() int {
-	if len(f) == 0 {
-		return -1
-	}
-	minKey := -1
-	first := true
-	for k := range f {
-		if first || k < minKey {
-			minKey = k
-			first = false
-		}
-	}
-	return minKey
+// token it represents a piece of the original string.
+type token struct {
+	value   string
+	escaped bool
 }
 
 // parseItem parse a raw string argument that it contains a separator
@@ -50,74 +36,55 @@ func (f find) min() int {
 //
 // parseItem is used internally to parse items in [Input.processItems] method.
 func parseItem(arg string, seps []string) (item, error) {
-	var sep, key, value string
-
 	tokens := tokenize(arg, seps)
-
-	// Sort by lenght ensures that the longest one will be
-	// chosen as it will overwrite any shorter ones starting
-	// at the same position in the `found` map.
-	sort.Slice(seps, func(i, j int) bool {
-		return len(seps[i]) < len(seps[j])
-	})
-
-	if func() bool {
-		for i, token := range tokens {
-			if escaped, ok := token.([]byte); ok {
-				tokens[i] = string(escaped)
-				continue
-			}
-
-			found := make(find)
-
-			for _, sep := range seps {
-				pos := strings.Index(token.(string), sep)
-				if pos != -1 {
-					found[pos] = sep
+	for i, t := range tokens {
+		if t.escaped {
+			continue
+		}
+		minPos := -1
+		// chosenSep is the separator that is found at the minPos.
+		// We need to keep track of it to split the token value correctly.
+		var chosenSep string
+		for _, s := range seps {
+			pos := strings.Index(t.value, s)
+			if pos != -1 {
+				if minPos == -1 ||
+					pos < minPos ||
+					(pos == minPos && len(s) > len(chosenSep)) {
+					minPos = pos
+					chosenSep = s
 				}
 			}
-
-			if len(found) > 0 {
-				// Starting first, longest separator found.
-				sep = found[found.min()]
-
-				r := strings.SplitN(token.(string), sep, 2)
-				key, value = r[0], r[1]
-
-				// Any preceding tokens are part of the key.
-				key = strings.Join(toStrSlice(tokens[:i]), "") + key
-
-				// Any following tokens are part of the value.
-				value += strings.Join(toStrSlice(tokens[i+1:]), "")
-
-				return false
-			}
 		}
-		return true
-	}() {
-		return item{}, fmt.Errorf("%s is not a valid value", arg)
-	}
-
-	return item{
-		Key: key,
-		Val: value,
-		Sep: sep,
-		Arg: arg,
-	}, nil
-}
-
-// toStrSlice return elements from i in a string slice.
-func toStrSlice(i []any) []string {
-	ss := make([]string, len(i))
-	for k, v := range i {
-		if s, ok := v.(string); ok {
-			ss[k] = s
+		if minPos != -1 {
+			r := strings.SplitN(t.value, chosenSep, 2)
+			keyLeft, valueRight := r[0], r[1]
+			// Rebuild the key and value by concatenating the tokens before
+			// and after the separator.
+			key := rebuild(tokens[:i]) + keyLeft
+			value := valueRight + rebuild(tokens[i+1:])
+			return item{
+				Key: key,
+				Val: value,
+				Sep: chosenSep,
+				Arg: arg,
+			}, nil
 		}
 	}
-	return ss
+	return item{}, fmt.Errorf("%s is not a valid value", arg)
 }
 
-// tokenize tokenize the raw arg string. There are only two token types,
+// rebuild joins the values of the tokens into a single string,
+// preserving the original order.
+func rebuild(tokens []token) string {
+	var sb strings.Builder
+	for _, t := range tokens {
+		sb.WriteString(t.value)
+	}
+	return sb.String()
+}
+
+// tokenize tokenize the raw arg string. There are only two [token] types,
 // strings and escaped characters, usage example:
 //
 //	tokenize(`foo\=bar\\baz`, []string{"="})
@@ -125,35 +92,36 @@ func toStrSlice(i []any) []string {
 // Result:
 //
 //	[foo = bar\\baz]
-func tokenize(arg string, seps []string) []any {
-	var tokens = []any{""}
-	var i int
-
-	for i < len(arg) {
-		if char := string(arg[i]); char == "\\" {
-
-			if i++; i < len(arg) {
-				char = string(arg[i])
+func tokenize(arg string, seps []string) []token {
+	var tokens []token
+	var current strings.Builder
+	for i := 0; i < len(arg); i++ {
+		if arg[i] == '\\' {
+			if i+1 < len(arg) {
+				nextChar := string(arg[i+1])
+				if inStrSlice(nextChar, seps) {
+					// Save what we have accumulated so far.
+					if current.Len() > 0 {
+						tokens = append(tokens, token{value: current.String()})
+						current.Reset()
+					}
+					// Save the escaped character as a special token.
+					tokens = append(tokens, token{value: nextChar, escaped: true})
+					i++ // Skip the next character as it's part of the escape sequence.
+					continue
+				}
+				current.WriteByte('\\')
+				current.WriteByte(arg[i+1])
+				i++
 			} else {
-				char = "" // Default char of next func ;)
+				current.WriteByte('\\')
 			}
-
-			if !inStrSlice(char, seps) {
-				s := tokens[len(tokens)-1].(string)
-				s += "\\" + char
-				tokens[len(tokens)-1] = s
-			} else {
-				// Catch escaped character by conversion to []byte.
-				tokens = append(tokens, []byte(char), "")
-			}
-
 		} else {
-			s := tokens[len(tokens)-1].(string)
-			s += char
-			tokens[len(tokens)-1] = s
+			current.WriteByte(arg[i])
 		}
-
-		i++
+	}
+	if current.Len() > 0 {
+		tokens = append(tokens, token{value: current.String()})
 	}
 	return tokens
 }
