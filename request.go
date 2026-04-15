@@ -18,28 +18,22 @@ func NewRequest(inp *Input) (*http.Request, error) {
 	if err != nil {
 		return nil, err
 	}
-
 	req, err := http.NewRequest(inp.Method, inp.URL, bytes.NewBuffer(b.content))
 	if err != nil {
 		return nil, err
 	}
-
 	if req.Header.Get("Content-Type") == "" && b.contentType != "" {
 		req.Header.Set("Content-Type", b.contentType)
 	}
-
 	r := &request{req}
-
 	err = r.parseHeaders(inp)
 	if err != nil {
 		return nil, err
 	}
-
 	err = r.parseQuery(inp)
 	if err != nil {
 		return nil, err
 	}
-
 	return r.Request, nil
 }
 
@@ -49,10 +43,9 @@ type bodyTuple struct {
 }
 
 // objectJSON represent a JSON object as a map. You can get it as JSON-encoded data.
-type objectJSON map[string]interface{}
+type objectJSON map[string]any
 
 // toData execute internally json.Marshal for get it as JSON-encoded data.
-//
 // If the JSON object map is empty, it will return nil as zero value of []byte.
 func (oj objectJSON) toData() (data []byte, err error) {
 	if len(oj) > 0 {
@@ -73,36 +66,40 @@ type itemValFunc func(item) string
 // TODO: Try to do this with generics.
 func parseRequestBody(inp *Input) (bodyTuple, error) {
 	obj := make(objectJSON)
-
-	var rules interface{} = map[string]interface{}{
+	var rules any = map[string]any{
 		SepDataString: func() (itemValFunc, objectJSON) {
 			return itemVal, obj
-
 		},
 	}
-
 	for _, item := range inp.Items {
-		if fn, ok := rules.(map[string]interface{})[item.Sep].(func() (itemValFunc, objectJSON)); ok {
+		if fn, ok := rules.(map[string]any)[item.Sep].(func() (itemValFunc, objectJSON)); ok {
 			valFunc, targetMap := fn()
 			value := valFunc(item)
 			targetMap[item.Key] = value
 		}
 	}
-
 	switch inp.BodyType {
-	case emptyBody:
+	case EmptyBody:
 		return bodyTuple{}, nil
-	case jsonBody:
+	case JSONBody:
 		bodyData, err := obj.toData()
 		if err != nil {
 			return bodyTuple{}, fmt.Errorf("marshaling JSON of HTTP body: %v", err)
 		}
-
 		return bodyTuple{
 			content:     bodyData,
 			contentType: "application/json",
 		}, nil
-	case rawBody:
+	case FormBody:
+		formData := url.Values{}
+		for _, item := range inp.Items {
+			formData.Add(item.Key, item.Val)
+		}
+		return bodyTuple{
+			content:     []byte(formData.Encode()),
+			contentType: "application/x-www-form-urlencoded",
+		}, nil
+	case RawBody:
 		return bodyTuple{
 			content:     inp.StdinData,
 			contentType: "application/json",
@@ -121,21 +118,18 @@ func itemVal(i item) string { return i.Val }
 // TODO: Try to do this with generics.
 func (r *request) parseQuery(inp *Input) (err error) {
 	query := r.URL.Query()
-
-	var rules interface{} = map[string]interface{}{
+	var rules any = map[string]any{
 		SepQueryParam: func() (itemValFunc, url.Values) {
 			return itemVal, query
 		},
 	}
-
 	for _, i := range inp.Items {
-		if fn, ok := rules.(map[string]interface{})[i.Sep].(func() (itemValFunc, url.Values)); ok {
+		if fn, ok := rules.(map[string]any)[i.Sep].(func() (itemValFunc, url.Values)); ok {
 			valFunc, targetMap := fn()
 			value := valFunc(i)
 			targetMap.Add(i.Key, value)
 		}
 	}
-
 	r.URL.RawQuery = query.Encode()
 	return nil
 }
@@ -148,7 +142,7 @@ type itemValWithErrFunc func(item) (string, error)
 //
 // TODO: Try to do this with generics.
 func (r *request) parseHeaders(inp *Input) error {
-	var rules interface{} = map[string]interface{}{
+	var rules any = map[string]any{
 		SepHeader: func() (itemValWithErrFunc, http.Header) {
 			return itemHeaderVal, r.Header
 		},
@@ -156,15 +150,13 @@ func (r *request) parseHeaders(inp *Input) error {
 			return emptyHeaderVal, r.Header
 		},
 	}
-
 	for _, i := range inp.Items {
-		if fn, ok := rules.(map[string]interface{})[i.Sep].(func() (itemValWithErrFunc, http.Header)); ok {
+		if fn, ok := rules.(map[string]any)[i.Sep].(func() (itemValWithErrFunc, http.Header)); ok {
 			valFunc, targetMap := fn()
 			value, err := valFunc(i)
 			if err != nil {
 				return err
 			}
-
 			targetMap.Add(i.Key, value)
 		}
 	}

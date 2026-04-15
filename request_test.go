@@ -30,19 +30,17 @@ func TestParseRequestBody(t *testing.T) {
 			},
 		},
 	}
-
+	opts := Options{}
 	for _, tc := range tt {
 		t.Run(tc.name, func(t *testing.T) {
-			inp, err := NewInput(tc.args, nil)
+			inp, err := NewInput(tc.args, nil, opts)
 			if err != nil {
 				t.Fatal(err)
 			}
-
 			got, err := parseRequestBody(inp)
 			if err != nil {
 				t.Fatal(err)
 			}
-
 			if !reflect.DeepEqual(tc.want, got) {
 				t.Errorf("%s\nwant\t%v\ngot\t%v", tc.name, tc.want, got)
 			}
@@ -104,26 +102,22 @@ func TestParseHeaders(t *testing.T) {
 			errExpected: false,
 		},
 	}
-
+	opts := Options{}
 	for _, tc := range tt {
 		t.Run(tc.name, func(t *testing.T) {
-			inp, err := NewInput(tc.args, nil)
+			inp, err := NewInput(tc.args, nil, opts)
 			if err != nil {
 				t.Fatal(err)
 			}
-
 			req, err := http.NewRequest(inp.Method, inp.URL, nil)
 			if err != nil {
 				t.Fatal(err)
 			}
-
 			r := &request{req}
-
 			err = r.parseHeaders(inp)
 			if (err != nil) != tc.errExpected {
 				t.Fatalf("%s: unexpected error status: %v", tc.name, err)
 			}
-
 			got := r.Request.Header
 			if !tc.errExpected && !reflect.DeepEqual(tc.want, got) {
 				t.Errorf("%s\nwant\t%#v\ngot\t%#v", tc.name, tc.want, got)
@@ -154,25 +148,21 @@ func TestParseQuery(t *testing.T) {
 			},
 		},
 	}
-
+	opts := Options{}
 	for _, tc := range tt {
 		t.Run(tc.name, func(t *testing.T) {
-			inp, err := NewInput(tc.args, nil)
+			inp, err := NewInput(tc.args, nil, opts)
 			if err != nil {
 				t.Fatal(err)
 			}
-
 			req, err := http.NewRequest(inp.Method, inp.URL, nil)
 			if err != nil {
 				t.Fatal(err)
 			}
-
 			r := &request{req}
-
 			if err := r.parseQuery(inp); err != nil {
 				t.Fatal(err)
 			}
-
 			//fmt.Printf("URL      %+v\n", r.Request.URL)          // httpbingo.org/get?query=value
 			//fmt.Printf("RawQuery %+v\n", r.Request.URL.RawQuery) // query=value
 			//fmt.Printf("Query    %+v\n", r.Request.URL.Query())  // map[query:[value]]
