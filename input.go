@@ -46,14 +46,14 @@ type Input struct {
 	Options   Options
 	Method    string
 	URL       string
-	Items     []item // Used when the BodyType is JSONBody or FormBody.
+	Items     []item
 	StdinData []byte
 	BodyType  BodyType
 }
 
 // NewInput return an Input pointer after parsing args o stdin value
 // condicionated by the value flags from opts, otherwise return error.
-func NewInput(args []string, stdin io.Reader, opts Options) (*Input, error) {
+func NewInput(args []string, opts Options) (*Input, error) {
 	var method, url string
 	var items []string
 	switch len(args) {
@@ -78,22 +78,24 @@ func NewInput(args []string, stdin io.Reader, opts Options) (*Input, error) {
 		return nil, err
 	}
 	in := Input{Options: opts}
-	// parse args to items
+	// Set Items by parsing args to items.
 	err := in.processItems(items)
 	if err != nil {
 		return nil, err
 	}
-	// infer body type by items and options flags
-	in.processBodyType()
-	// handle raw/stdin
-	err = in.processStdin(stdin)
+	// Set StdinData via pipeline or -raw flag.
+	err = in.processStdin(os.Stdin)
 	if err != nil {
 		return nil, err
 	}
+	// Set BodyType by StdinData or Items and options flags.
+	in.processBodyType()
+	// Set HTTP Method.
 	err = in.processMethod(method)
 	if err != nil {
 		return nil, err
 	}
+	// Set URL.
 	err = in.processURL(url)
 	if err != nil {
 		return nil, err
@@ -118,29 +120,30 @@ func (in *Input) processItems(items []string) error {
 	return nil
 }
 
-// processBodyType set BodyType value by detect the items
-// with body type separators or options flags.
+// processBodyType set BodyType value by the priority of options flags
+// and items separators.
 func (in *Input) processBodyType() {
-	in.BodyType = detectBodyType(in.Items, in.Options)
-}
-
-func detectBodyType(items []item, opts Options) BodyType {
-	// 1. Explicitly by options flags, the priority order is: Raw > Multipart > Form > JSON.
-	if opts.Raw != "" {
-		return RawBody
+	// 1. Priority based on options flags
+	if in.Options.Raw != "" || in.StdinData != nil {
+		in.BodyType = RawBody
+		return
 	}
-	if opts.Multipart {
-		return MultipartBody
+	if in.Options.Multipart {
+		in.BodyType = MultipartBody
+		return
 	}
-	if opts.Form {
-		return FormBody
+	if in.Options.Form {
+		in.BodyType = FormBody
+		return
 	}
-	if opts.JSON {
-		return JSONBody
+	// If the user uses -json, we force JSONBody
+	if in.Options.JSON {
+		in.BodyType = JSONBody
+		return
 	}
-	// 2. Inference by items separators, the priority order is: Multipart > JSON > String.
+	// 2. Inference based on item separators
 	var hasJSON, hasFile, hasData bool
-	for _, it := range items {
+	for _, it := range in.Items {
 		switch it.Sep {
 		case SepDataRawJSON:
 			hasJSON = true
@@ -152,13 +155,16 @@ func detectBodyType(items []item, opts Options) BodyType {
 	}
 	switch {
 	case hasFile:
-		return MultipartBody
+		in.BodyType = MultipartBody
 	case hasJSON:
-		return JSONBody
+		in.BodyType = JSONBody
 	case hasData:
-		return JSONBody // important (in HTTPie is the default)
+		// If there are data items (key=val) but -form is not specified,
+		// we assume JSON by default.
+		in.BodyType = JSONBody
 	default:
-		return EmptyBody
+		// If there are no data items and no flags, the body will be empty.
+		in.BodyType = EmptyBody
 	}
 }
 
@@ -176,12 +182,12 @@ func (in *Input) processStdin(stdin io.Reader) error {
 	}
 	// raw flag override
 	if in.Options.Raw != "" {
-		in.BodyType = RawBody
+		//in.BodyType = RawBody
 		in.StdinData = []byte(in.Options.Raw)
 		return nil
 	}
 	if hasStdin {
-		in.BodyType = RawBody
+		//in.BodyType = RawBody
 		in.StdinData, err = io.ReadAll(stdin)
 		if err != nil {
 			return err
@@ -192,10 +198,22 @@ func (in *Input) processStdin(stdin io.Reader) error {
 
 // ensureOneDataSource it can only be one source of input request data.
 func ensureOneDataSource(items []item, opts Options, hasStdin bool) error {
-	hasItems := len(items) > 0
+	var hasDataItems bool
+	dataSeps := SepsGroupDataItems()
+	for _, it := range items {
+		for _, sep := range dataSeps {
+			if it.Sep == sep {
+				hasDataItems = true
+				break
+			}
+		}
+		if hasDataItems {
+			break
+		}
+	}
 	hasRaw := opts.Raw != ""
 	count := 0
-	if hasItems {
+	if hasDataItems {
 		count++
 	}
 	if hasRaw {
@@ -205,7 +223,7 @@ func ensureOneDataSource(items []item, opts Options, hasStdin bool) error {
 		count++
 	}
 	if count > 1 {
-		return errors.New("request body (stdin, -raw, or file) and request items (key=value) cannot be mixed")
+		return errors.New("request body (stdin, -raw, or file) and request data items (key=value, key:=value) cannot be mixed")
 	}
 	return nil
 }

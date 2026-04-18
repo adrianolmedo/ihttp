@@ -33,7 +33,7 @@ func TestParseRequestBody(t *testing.T) {
 	opts := Options{}
 	for _, tc := range tt {
 		t.Run(tc.name, func(t *testing.T) {
-			inp, err := NewInput(tc.args, nil, opts)
+			inp, err := NewInput(tc.args, opts)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -105,7 +105,7 @@ func TestParseHeaders(t *testing.T) {
 	opts := Options{}
 	for _, tc := range tt {
 		t.Run(tc.name, func(t *testing.T) {
-			inp, err := NewInput(tc.args, nil, opts)
+			inp, err := NewInput(tc.args, opts)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -151,7 +151,7 @@ func TestParseQuery(t *testing.T) {
 	opts := Options{}
 	for _, tc := range tt {
 		t.Run(tc.name, func(t *testing.T) {
-			inp, err := NewInput(tc.args, nil, opts)
+			inp, err := NewInput(tc.args, opts)
 			if err != nil {
 				t.Fatal(err)
 			}

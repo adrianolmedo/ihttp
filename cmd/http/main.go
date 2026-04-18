@@ -80,7 +80,7 @@ func main() {
 	}
 	opts.SetScheme(*scheme)
 	// Parse args to Input values.
-	inp, err := ihttp.NewInput(flag.Args(), os.Stdin, opts)
+	inp, err := ihttp.NewInput(flag.Args(), opts)
 	if err != nil {
 		errAndExit(err)
 	}
