@@ -15,7 +15,7 @@ const (
 
 	SepDataRawJSON = ":="
 
-	SepFileUpload = "@" // NOTE: Enabled to satisfy internal Parser tests
+	SepFileUpload = "@"
 
 	//SepFileUploadType        = ";type=" // in already parsed file upload path only
 	//SepDataEmbedFileContents = "=@"
