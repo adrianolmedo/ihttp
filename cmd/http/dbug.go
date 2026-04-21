@@ -19,8 +19,10 @@ type opts struct {
 	JSON      bool
 	Form      bool
 	Multipart bool
-	Boundary  string
 	Raw       string
+	Boundary  string
+	Chunked   bool
+	Offline   bool
 	Verbose   bool
 }
 
@@ -46,8 +48,10 @@ func (d *dbug) toString() (string, error) {
 			JSON:      d.opts.JSON,
 			Form:      d.opts.Form,
 			Multipart: d.opts.Multipart,
-			Boundary:  d.opts.Boundary,
 			Raw:       d.opts.Raw,
+			Boundary:  d.opts.Boundary,
+			Chunked:   d.opts.Chunked,
+			Offline:   d.opts.Offline,
 			Verbose:   d.opts.Verbose,
 		},
 		inp: inp{

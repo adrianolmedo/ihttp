@@ -7,8 +7,10 @@ type Options struct {
 	JSON      bool
 	Form      bool
 	Multipart bool
-	Boundary  string
 	Raw       string
+	Boundary  string
+	Chunked   bool
+	Offline   bool
 	Verbose   bool
 	scheme    string
 }

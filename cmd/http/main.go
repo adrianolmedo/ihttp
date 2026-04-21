@@ -28,16 +28,13 @@ Options:
             	specified). The presence of any file fields results in a
             	multipart/form-data request.
 				
-    -multipart  Similar to --form, but always sends a multipart/form-data request
+    -multipart  Similar to -form, but always sends a multipart/form-data request
             	(i.e., even without files).
-				
-    -boundary  	Set the boundary parameter for multipart/form-data requests. 
-            	This option is only relevant when using --multipart.
 				
     -raw    	This option allows you to pass raw request data without extra processing
             	(as opposed to the structured request items syntax):
       
-            		$ http --raw='data' httpbingo.org/post 
+            		$ http -raw='data' httpbingo.org/post 
       
             	You can achieve the same by piping the data via stdin:
       
@@ -46,6 +43,14 @@ Options:
             	Or have HTTPie load the raw data from a file:
       
             		$ http httpbingo.org/post @data.txt
+
+    -boundary  	Set the boundary parameter for multipart/form-data requests. 
+            	This option is only relevant when using -multipart.
+
+    -chunked  	Enable streaming via chunked transfer encoding.The Transfer-Encoding header
+				is set to chunked.
+
+    -offline  	Build the request and print it but don’t actually send it.
 
     -v      	Verbose output. Print the whole request as well as the response.
 
@@ -59,8 +64,10 @@ func main() {
 		json      = flag.Bool("json", false, "")
 		form      = flag.Bool("form", false, "")
 		multipart = flag.Bool("multipart", false, "")
-		boundary  = flag.String("boundary", "", "")
 		raw       = flag.String("raw", "", "")
+		boundary  = flag.String("boundary", "", "")
+		chunked   = flag.Bool("chunked", false, "")
+		offline   = flag.Bool("offline", false, "")
 		verbose   = flag.Bool("v", false, "")
 		debug     = flag.Bool("debug", false, "")
 	)
@@ -74,8 +81,10 @@ func main() {
 		JSON:      *json,
 		Form:      *form,
 		Multipart: *multipart,
-		Boundary:  *boundary,
 		Raw:       *raw,
+		Boundary:  *boundary,
+		Chunked:   *chunked,
+		Offline:   *offline,
 		Verbose:   *verbose,
 	}
 	opts.SetScheme(*scheme)
