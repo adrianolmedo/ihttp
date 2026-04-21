@@ -4,8 +4,11 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
+	"mime/multipart"
 	"net/http"
 	"net/url"
+	"os"
 )
 
 type request struct {
@@ -13,12 +16,12 @@ type request struct {
 }
 
 // NewRequest builds and start process to return HTTP Request from inp values.
-func NewRequest(inp *Input) (*http.Request, error) {
-	b, err := parseRequestBody(inp)
+func NewRequest(in *Input) (*http.Request, error) {
+	b, err := parseRequestBody(in)
 	if err != nil {
 		return nil, err
 	}
-	req, err := http.NewRequest(inp.Method, inp.URL, bytes.NewBuffer(b.content))
+	req, err := http.NewRequest(in.Method, in.URL, bytes.NewBuffer(b.content))
 	if err != nil {
 		return nil, err
 	}
@@ -26,11 +29,11 @@ func NewRequest(inp *Input) (*http.Request, error) {
 		req.Header.Set("Content-Type", b.contentType)
 	}
 	r := &request{req}
-	err = r.parseHeaders(inp)
+	err = r.parseHeaders(in)
 	if err != nil {
 		return nil, err
 	}
-	err = r.parseQuery(inp)
+	err = r.parseQuery(in)
 	if err != nil {
 		return nil, err
 	}
@@ -57,31 +60,20 @@ func (oj objectJSON) toData() (data []byte, err error) {
 	return data, nil
 }
 
-type itemValFunc func(item) string
-
 // parseRequestBody parse Key and Val fields from inp.Items to objectJSON
 // (that it could be later encode to JSON format data for the `body` argument
 // to http.NewRequest).
-//
-// TODO: Try to do this with generics.
-func parseRequestBody(inp *Input) (bodyTuple, error) {
-	obj := make(objectJSON)
-	var rules any = map[string]any{
-		SepDataString: func() (itemValFunc, objectJSON) {
-			return itemVal, obj
-		},
-	}
-	for _, item := range inp.Items {
-		if fn, ok := rules.(map[string]any)[item.Sep].(func() (itemValFunc, objectJSON)); ok {
-			valFunc, targetMap := fn()
-			value := valFunc(item)
-			targetMap[item.Key] = value
-		}
-	}
-	switch inp.BodyType {
+func parseRequestBody(in *Input) (bodyTuple, error) {
+	switch in.BodyType {
 	case EmptyBody:
 		return bodyTuple{}, nil
 	case JSONBody:
+		obj := make(objectJSON)
+		for _, it := range in.Items {
+			if it.Sep == SepDataString {
+				obj[it.Key] = it.Val
+			}
+		}
 		bodyData, err := obj.toData()
 		if err != nil {
 			return bodyTuple{}, fmt.Errorf("marshaling JSON of HTTP body: %v", err)
@@ -92,85 +84,84 @@ func parseRequestBody(inp *Input) (bodyTuple, error) {
 		}, nil
 	case FormBody:
 		formData := url.Values{}
-		for _, item := range inp.Items {
+		for _, item := range in.Items {
 			formData.Add(item.Key, item.Val)
 		}
 		return bodyTuple{
 			content:     []byte(formData.Encode()),
 			contentType: "application/x-www-form-urlencoded",
 		}, nil
+	case MultipartBody:
+		return buildMultipartBody(in)
 	case RawBody:
 		return bodyTuple{
-			content:     inp.StdinData,
+			content:     in.StdinData,
 			contentType: "application/json",
 		}, nil
 	default:
-		return bodyTuple{}, fmt.Errorf("unknown body type: %v", inp.BodyType)
+		return bodyTuple{}, fmt.Errorf("unknown body type: %v", in.BodyType)
 	}
 }
 
-// itemVal is an itemValFunc type for the map `rules` in parseRequestBody.
-func itemVal(i item) string { return i.Val }
+func buildMultipartBody(in *Input) (bodyTuple, error) {
+	var buf bytes.Buffer
+	writer := multipart.NewWriter(&buf)
+	// when -boundary flag is set
+	if in.Options.Boundary != "" {
+		writer.SetBoundary(in.Options.Boundary)
+	}
+	for _, it := range in.Items {
+		switch it.Sep {
+		case SepFileUpload:
+			file, err := os.Open(it.Val)
+			if err != nil {
+				return bodyTuple{}, err
+			}
+			defer file.Close()
+			part, err := writer.CreateFormFile(it.Key, it.Val)
+			if err != nil {
+				return bodyTuple{}, err
+			}
+			_, err = io.Copy(part, file)
+			if err != nil {
+				return bodyTuple{}, err
+			}
+		case SepDataString:
+			err := writer.WriteField(it.Key, it.Val)
+			if err != nil {
+				return bodyTuple{}, err
+			}
+		}
+	}
+	writer.Close()
+	return bodyTuple{
+		content:     buf.Bytes(),
+		contentType: writer.FormDataContentType(),
+	}, nil
+}
 
 // parseQuery add the Key and Val values from inp.Items to the URL Query string
 // (type url.Values) of the HTTP Request using its Add method.
-//
-// TODO: Try to do this with generics.
-func (r *request) parseQuery(inp *Input) (err error) {
+func (r *request) parseQuery(in *Input) (err error) {
 	query := r.URL.Query()
-	var rules any = map[string]any{
-		SepQueryParam: func() (itemValFunc, url.Values) {
-			return itemVal, query
-		},
-	}
-	for _, i := range inp.Items {
-		if fn, ok := rules.(map[string]any)[i.Sep].(func() (itemValFunc, url.Values)); ok {
-			valFunc, targetMap := fn()
-			value := valFunc(i)
-			targetMap.Add(i.Key, value)
-		}
-	}
 	r.URL.RawQuery = query.Encode()
 	return nil
 }
 
-type itemValWithErrFunc func(item) (string, error)
-
 // parseHeaders add the Key and Val values from inp.Items to Header of the HTTP
 // Request using its Add, otherwise it will return error from some
 // itemValWithErrFunc.
-//
-// TODO: Try to do this with generics.
-func (r *request) parseHeaders(inp *Input) error {
-	var rules any = map[string]any{
-		SepHeader: func() (itemValWithErrFunc, http.Header) {
-			return itemHeaderVal, r.Header
-		},
-		SepHeaderEmpty: func() (itemValWithErrFunc, http.Header) {
-			return emptyHeaderVal, r.Header
-		},
-	}
-	for _, i := range inp.Items {
-		if fn, ok := rules.(map[string]any)[i.Sep].(func() (itemValWithErrFunc, http.Header)); ok {
-			valFunc, targetMap := fn()
-			value, err := valFunc(i)
-			if err != nil {
-				return err
+func (r *request) parseHeaders(in *Input) error {
+	for _, i := range in.Items {
+		switch i.Sep {
+		case SepHeader:
+			r.Header.Add(i.Key, i.Val)
+		case SepHeaderEmpty:
+			if i.Val == "" {
+				return fmt.Errorf("invalid item %s (to specify an empty header use `Header;`)", i.Arg)
 			}
-			targetMap.Add(i.Key, value)
+			r.Header.Add(i.Key, i.Val)
 		}
 	}
 	return nil
-}
-
-// headerVal is an itemValWithErrFunc type for the map `rules` in parseHeaders.
-func itemHeaderVal(i item) (string, error) { return i.Val, nil }
-
-// emptyHeaderVal is an itemValWithErrFunc type for the map `rules` in
-// parseRequestHeaders.
-func emptyHeaderVal(i item) (string, error) {
-	if i.Val != "" {
-		return i.Val, nil
-	}
-	return "", fmt.Errorf("invalid item %s (to specify an empty header use `Header;`)", i.Arg)
 }
