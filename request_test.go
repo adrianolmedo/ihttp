@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-func TestParseRequestBody(t *testing.T) {
+func TestBuildRequestBody(t *testing.T) {
 	tt := []struct {
 		name string
 		args []string
@@ -37,7 +37,7 @@ func TestParseRequestBody(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			got, err := parseRequestBody(inp)
+			got, err := buildBody(inp)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -48,7 +48,7 @@ func TestParseRequestBody(t *testing.T) {
 	}
 }
 
-func TestParseHeaders(t *testing.T) {
+func TestBuildHeaders(t *testing.T) {
 	tt := []struct {
 		name        string
 		args        []string
@@ -114,7 +114,7 @@ func TestParseHeaders(t *testing.T) {
 				t.Fatal(err)
 			}
 			r := &request{req}
-			err = r.parseHeaders(inp)
+			err = r.buildHeaders(inp)
 			if (err != nil) != tc.errExpected {
 				t.Fatalf("%s: unexpected error status: %v", tc.name, err)
 			}
@@ -126,8 +126,7 @@ func TestParseHeaders(t *testing.T) {
 	}
 }
 
-// TestParseParams
-func TestParseQuery(t *testing.T) {
+func TestBuildURLQuery(t *testing.T) {
 	tt := []struct {
 		name string
 		args []string
@@ -160,7 +159,7 @@ func TestParseQuery(t *testing.T) {
 				t.Fatal(err)
 			}
 			r := &request{req}
-			if err := r.parseQuery(inp); err != nil {
+			if err := r.buildURLQuery(inp); err != nil {
 				t.Fatal(err)
 			}
 			//fmt.Printf("URL      %+v\n", r.Request.URL)          // httpbingo.org/get?query=value

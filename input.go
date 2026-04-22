@@ -34,7 +34,7 @@ const (
 	JSONBody               // application/json
 	FormBody               // application/x-www-form-urlencoded
 	MultipartBody          // multipart/form-data
-	RawBody                // application/octet-stream o detectado
+	RawBody                // application/json
 )
 
 var reMethod = regexp.MustCompile(`^[a-zA-Z]+$`)
@@ -168,8 +168,8 @@ func (in *Input) processBodyType() {
 	}
 }
 
-// processStdin read the stdin data if exists and set BodyType to RawBody.
-// Also check that only one of the data sources is used: items, -raw or stdin.
+// processStdin read the stdin data if exists. Also check that only one of
+// the data sources is used: items, -raw or stdin.
 func (in *Input) processStdin(stdin io.Reader) error {
 	stat, err := os.Stdin.Stat()
 	if err != nil {
@@ -182,12 +182,10 @@ func (in *Input) processStdin(stdin io.Reader) error {
 	}
 	// raw flag override
 	if in.Options.Raw != "" {
-		//in.BodyType = RawBody
 		in.StdinData = []byte(in.Options.Raw)
 		return nil
 	}
 	if hasStdin {
-		//in.BodyType = RawBody
 		in.StdinData, err = io.ReadAll(stdin)
 		if err != nil {
 			return err

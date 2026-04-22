@@ -9,6 +9,8 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"path/filepath"
+	"strings"
 )
 
 type request struct {
@@ -16,28 +18,33 @@ type request struct {
 }
 
 // NewRequest builds and start process to return HTTP Request from inp values.
-func NewRequest(in *Input) (*http.Request, error) {
-	b, err := parseRequestBody(in)
+func NewRequest(in *Input) (*http.Request, []byte, error) {
+	b, err := buildBody(in)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	req, err := http.NewRequest(in.Method, in.URL, bytes.NewBuffer(b.content))
+	var bodyReader io.Reader = http.NoBody
+	if len(b.content) > 0 {
+		bodyReader = bytes.NewBuffer(b.content)
+	}
+	req, err := http.NewRequest(in.Method, in.URL, bodyReader)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	if req.Header.Get("Content-Type") == "" && b.contentType != "" {
 		req.Header.Set("Content-Type", b.contentType)
 	}
 	r := &request{req}
-	err = r.parseHeaders(in)
+	err = r.buildHeaders(in)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	err = r.parseQuery(in)
+	r.buildDefaultHeaders(in)
+	err = r.buildURLQuery(in)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	return r.Request, nil
+	return r.Request, b.content, nil
 }
 
 type bodyTuple struct {
@@ -45,117 +52,127 @@ type bodyTuple struct {
 	contentType string
 }
 
-// objectJSON represent a JSON object as a map. You can get it as JSON-encoded data.
-type objectJSON map[string]any
-
-// toData execute internally json.Marshal for get it as JSON-encoded data.
-// If the JSON object map is empty, it will return nil as zero value of []byte.
-func (oj objectJSON) toData() (data []byte, err error) {
-	if len(oj) > 0 {
-		data, err = json.Marshal(oj)
-		if err != nil {
-			return nil, err
-		}
-	}
-	return data, nil
-}
-
-// parseRequestBody parse Key and Val fields from inp.Items to objectJSON
-// (that it could be later encode to JSON format data for the `body` argument
-// to http.NewRequest).
-func parseRequestBody(in *Input) (bodyTuple, error) {
+func buildBody(in *Input) (bodyTuple, error) {
 	switch in.BodyType {
 	case EmptyBody:
 		return bodyTuple{}, nil
-	case JSONBody:
-		obj := make(objectJSON)
-		for _, it := range in.Items {
-			if it.Sep == SepDataString {
-				obj[it.Key] = it.Val
-			}
-		}
-		bodyData, err := obj.toData()
-		if err != nil {
-			return bodyTuple{}, fmt.Errorf("marshaling JSON of HTTP body: %v", err)
-		}
-		return bodyTuple{
-			content:     bodyData,
-			contentType: "application/json",
-		}, nil
-	case FormBody:
-		formData := url.Values{}
-		for _, item := range in.Items {
-			formData.Add(item.Key, item.Val)
-		}
-		return bodyTuple{
-			content:     []byte(formData.Encode()),
-			contentType: "application/x-www-form-urlencoded",
-		}, nil
-	case MultipartBody:
-		return buildMultipartBody(in)
+
 	case RawBody:
 		return bodyTuple{
 			content:     in.StdinData,
 			contentType: "application/json",
 		}, nil
+
+	case JSONBody:
+		return buildJSONBody(in.Items)
+
+	case FormBody:
+		return buildFormBody(in.Items)
+
+	case MultipartBody:
+		return buildMultipartBody(in.Items, in.Options.Boundary)
+
 	default:
-		return bodyTuple{}, fmt.Errorf("unknown body type: %v", in.BodyType)
+		return bodyTuple{}, fmt.Errorf("unsupported body type: %s", in.BodyType)
 	}
 }
 
-func buildMultipartBody(in *Input) (bodyTuple, error) {
-	var buf bytes.Buffer
-	writer := multipart.NewWriter(&buf)
-	// when -boundary flag is set
-	if in.Options.Boundary != "" {
-		writer.SetBoundary(in.Options.Boundary)
-	}
-	for _, it := range in.Items {
+func buildJSONBody(items []item) (bodyTuple, error) {
+	data := make(map[string]any)
+	for _, it := range items {
 		switch it.Sep {
-		case SepFileUpload:
-			file, err := os.Open(it.Val)
-			if err != nil {
-				return bodyTuple{}, err
-			}
-			defer file.Close()
-			part, err := writer.CreateFormFile(it.Key, it.Val)
-			if err != nil {
-				return bodyTuple{}, err
-			}
-			_, err = io.Copy(part, file)
-			if err != nil {
-				return bodyTuple{}, err
-			}
 		case SepDataString:
-			err := writer.WriteField(it.Key, it.Val)
-			if err != nil {
-				return bodyTuple{}, err
+			data[it.Key] = it.Val
+		case SepDataRawJSON:
+			var v any
+			if err := json.Unmarshal([]byte(it.Val), &v); err != nil {
+				return bodyTuple{}, fmt.Errorf("invalid JSON value for %q: %w", it.Key, err)
 			}
+			data[it.Key] = v
 		}
 	}
-	writer.Close()
+	b, err := json.Marshal(data)
+	if err != nil {
+		return bodyTuple{}, err
+	}
+	return bodyTuple{content: b, contentType: "application/json"}, nil
+}
+
+func buildFormBody(items []item) (bodyTuple, error) {
+	vals := url.Values{}
+	for _, it := range items {
+		if it.Sep == SepDataString {
+			vals.Add(it.Key, it.Val)
+		}
+	}
 	return bodyTuple{
-		content:     buf.Bytes(),
-		contentType: writer.FormDataContentType(),
+		content:     []byte(vals.Encode()),
+		contentType: "application/x-www-form-urlencoded",
 	}, nil
 }
 
-// parseQuery add the Key and Val values from inp.Items to the URL Query string
+func buildMultipartBody(items []item, boundary string) (bodyTuple, error) {
+	var buf bytes.Buffer
+	var w *multipart.Writer
+	if boundary != "" {
+		w = multipart.NewWriter(&buf)
+		w.SetBoundary(boundary)
+	} else {
+		w = multipart.NewWriter(&buf)
+	}
+	for _, it := range items {
+		switch it.Sep {
+		case SepDataString:
+			if err := w.WriteField(it.Key, it.Val); err != nil {
+				return bodyTuple{}, err
+			}
+		case SepFileUpload:
+			f, err := os.Open(it.Val)
+			if err != nil {
+				return bodyTuple{}, fmt.Errorf("cannot open file %q: %w", it.Val, err)
+			}
+			part, err := w.CreateFormFile(it.Key, filepath.Base(it.Val))
+			if err != nil {
+				f.Close()
+				return bodyTuple{}, err
+			}
+			if _, err := io.Copy(part, f); err != nil {
+				f.Close()
+				return bodyTuple{}, err
+			}
+			f.Close()
+		}
+	}
+	if err := w.Close(); err != nil {
+		return bodyTuple{}, err
+	}
+	return bodyTuple{content: buf.Bytes(), contentType: w.FormDataContentType()}, nil
+}
+
+// buildURLQuery add the Key and Val values from inp.Items to the URL Query string
 // (type url.Values) of the HTTP Request using its Add method.
-func (r *request) parseQuery(in *Input) (err error) {
+func (r *request) buildURLQuery(in *Input) error {
 	query := r.URL.Query()
+	for _, it := range in.Items {
+		if it.Sep == SepQueryParam {
+			query.Add(it.Key, it.Val)
+		}
+	}
 	r.URL.RawQuery = query.Encode()
 	return nil
 }
 
-// parseHeaders add the Key and Val values from inp.Items to Header of the HTTP
-// Request using its Add, otherwise it will return error from some
-// itemValWithErrFunc.
-func (r *request) parseHeaders(in *Input) error {
+// buildHeaders add the Key and Val values from inp.Items to Header of the HTTP
+// Request using its Add, otherwise it will return error.
+func (r *request) buildHeaders(in *Input) error {
 	for _, i := range in.Items {
 		switch i.Sep {
 		case SepHeader:
-			r.Header.Add(i.Key, i.Val)
+			if strings.EqualFold(i.Key, "Host") {
+				r.Host = i.Val // overrides the Host header specifically
+			} else {
+				r.Header.Add(i.Key, i.Val)
+			}
 		case SepHeaderEmpty:
 			if i.Val == "" {
 				return fmt.Errorf("invalid item %s (to specify an empty header use `Header;`)", i.Arg)
@@ -164,4 +181,16 @@ func (r *request) parseHeaders(in *Input) error {
 		}
 	}
 	return nil
+}
+
+func (r *request) buildDefaultHeaders(in *Input) {
+	if in.BodyType == JSONBody {
+		if r.Header.Get("Accept") == "" {
+			r.Header.Set("Accept", "application/json, */*;q=0.5")
+		}
+		if r.Header.Get("Content-Type") == "" {
+			// already set from buildBody, but guard anyway
+			r.Header.Set("Content-Type", "application/json")
+		}
+	}
 }

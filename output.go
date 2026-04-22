@@ -1,12 +1,10 @@
 package ihttp
 
 import (
-	"bufio"
 	"bytes"
 	"encoding/json"
 	"io"
 	"net/http"
-	"net/http/httputil"
 	"sort"
 	"strings"
 	"time"
@@ -17,20 +15,23 @@ import (
 // Output has strings.Builder for design an output string for os.Stdout
 // and catch an error during its processes for os.Stderr.
 type Output struct {
-	Request *http.Request
-	Options Options
+	Request     *http.Request
+	Options     Options
+	requestBody []byte // snapshot before send
 
 	sb  strings.Builder
 	err error
 }
 
 // NewOutput return a new Output.
-func NewOutput(req *http.Request, opts Options) (*Output, error) {
-	o := &Output{Request: req, Options: opts}
-	if o.Options.Verbose {
+func NewOutput(req *http.Request, body []byte, opts Options) (*Output, error) {
+	o := &Output{Request: req, Options: opts, requestBody: body}
+	if o.Options.Verbose || o.Options.Offline {
 		o.writeRequest()
 	}
-	o.writeResponse()
+	if !o.Options.Offline {
+		o.writeResponse()
+	}
 	if o.err != nil {
 		return nil, o.err
 	}
@@ -66,21 +67,23 @@ func sortHeaderKeys(h http.Header) []string {
 // writeRequest write the HTTP Request from Request parsed.
 func (o *Output) writeRequest() {
 	o.withErr(func() error {
-		reqData, err := httputil.DumpRequestOut(o.Request, true)
-		if err != nil {
-			return err
+		req := o.Request
+		// Request line
+		o.sb.WriteString(req.Method + " " + req.URL.RequestURI() + " " + req.Proto + "\n")
+		// Host header — prefer req.Host (user override), fall back to URL host
+		host := req.Host
+		if host == "" {
+			host = req.URL.Host
 		}
-		br := bufio.NewReader(bytes.NewReader(reqData))
-		r, err := http.ReadRequest(br)
-		if err != nil {
-			return err
+		o.sb.WriteString("Host: " + host + "\n")
+		// Remaining headers (sorted, skip Host since we wrote it manually)
+		headers := req.Header.Clone()
+		headers.Del("Host")
+		o.writeHeaders(headers)
+		// Body
+		if req.Body != nil && req.Body != http.NoBody {
+			o.writeRequestBody(req)
 		}
-		o.sb.WriteString(r.Method + " " + r.URL.Path + " " + r.Proto + "\n")
-		if len(r.Header.Values("host")) == 0 && o.Request.URL.Host != "" {
-			r.Header.Add("Host", o.Request.URL.Host)
-		}
-		o.writeHeaders(r.Header)
-		o.writeRequestBody(r)
 		o.sb.WriteString("\n")
 		return nil
 	})
@@ -89,22 +92,18 @@ func (o *Output) writeRequest() {
 // writeRequestBody write the Body from r.
 func (o *Output) writeRequestBody(r *http.Request) {
 	o.withErr(func() error {
-		defer r.Body.Close()
-		bodyData, err := io.ReadAll(r.Body)
-		if err != nil {
-			return err
+		if len(o.requestBody) == 0 {
+			return nil
 		}
-		var body string
-		if isJSON(bytes.NewBuffer(bodyData)) {
-			bodyBuf := &bytes.Buffer{}
-			if err := json.Indent(bodyBuf, bodyData, "", TabSpaces); err != nil {
+		if isJSON(bytes.NewReader(o.requestBody)) {
+			var buf bytes.Buffer
+			if err := json.Indent(&buf, o.requestBody, "", TabSpaces); err != nil {
 				return err
 			}
-			body = bodyBuf.String()
+			o.sb.WriteString("\n" + buf.String() + "\n")
 		} else {
-			body = string(bodyData)
+			o.sb.WriteString("\n" + string(o.requestBody) + "\n")
 		}
-		o.sb.WriteString("\n" + body + "\n")
 		return nil
 	})
 }
@@ -155,7 +154,7 @@ func (o *Output) writeResponseBody(r *http.Response) {
 			return err
 		}
 		var body string
-		if strings.Contains(r.Header.Get("content-type"), "application/json") && isJSON(r.Body) {
+		if strings.Contains(r.Header.Get("content-type"), "application/json") && isJSON(bytes.NewReader(bodyData)) {
 			bodyBuf := &bytes.Buffer{}
 			if err := json.Indent(bodyBuf, bodyData, "", TabSpaces); err != nil {
 				return err

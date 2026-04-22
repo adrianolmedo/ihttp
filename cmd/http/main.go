@@ -103,11 +103,11 @@ func main() {
 		dbg = fmt.Sprintf("iHTTP v%s\n\n%s\n\n", ihttp.Version, dbg)
 		fmt.Fprint(os.Stdout, dbg)
 	}
-	req, err := ihttp.NewRequest(inp)
+	req, body, err := ihttp.NewRequest(inp)
 	if err != nil {
 		errAndExit(err)
 	}
-	out, err := ihttp.NewOutput(req, opts)
+	out, err := ihttp.NewOutput(req, body, opts)
 	if err != nil {
 		errAndExit(err)
 	}
