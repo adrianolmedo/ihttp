@@ -17,7 +17,7 @@ type request struct {
 	*http.Request
 }
 
-// NewRequest builds and start process to return HTTP Request from inp values.
+// NewRequest builds and start process to return HTTP Request from [Input] values.
 func NewRequest(in *Input) (*http.Request, []byte, error) {
 	b, err := buildBody(in)
 	if err != nil {
@@ -77,6 +77,7 @@ func buildBody(in *Input) (bodyTuple, error) {
 	}
 }
 
+// buildJSONBody constructs the body content and content type for a JSON body based.
 func buildJSONBody(items []item) (bodyTuple, error) {
 	data := make(map[string]any)
 	for _, it := range items {
@@ -98,7 +99,14 @@ func buildJSONBody(items []item) (bodyTuple, error) {
 	return bodyTuple{content: b, contentType: "application/json"}, nil
 }
 
+// buildFormBody constructs the body content and content type for a form body based.
 func buildFormBody(items []item) (bodyTuple, error) {
+	// if any file fields are present, delegate to multipart
+	for _, it := range items {
+		if it.Sep == SepFileUpload {
+			return buildMultipartBody(items, "")
+		}
+	}
 	vals := url.Values{}
 	for _, it := range items {
 		if it.Sep == SepDataString {
@@ -107,10 +115,11 @@ func buildFormBody(items []item) (bodyTuple, error) {
 	}
 	return bodyTuple{
 		content:     []byte(vals.Encode()),
-		contentType: "application/x-www-form-urlencoded",
+		contentType: "application/x-www-form-urlencoded; charset=utf-8",
 	}, nil
 }
 
+// buildMultipartBody constructs the body content and content type for a multipart body based.
 func buildMultipartBody(items []item, boundary string) (bodyTuple, error) {
 	var buf bytes.Buffer
 	var w *multipart.Writer
@@ -149,7 +158,7 @@ func buildMultipartBody(items []item, boundary string) (bodyTuple, error) {
 	return bodyTuple{content: buf.Bytes(), contentType: w.FormDataContentType()}, nil
 }
 
-// buildURLQuery add the Key and Val values from inp.Items to the URL Query string
+// buildURLQuery add the Key and Val values from in.Items to the URL Query string
 // (type url.Values) of the HTTP Request using its Add method.
 func (r *request) buildURLQuery(in *Input) error {
 	query := r.URL.Query()
@@ -162,7 +171,7 @@ func (r *request) buildURLQuery(in *Input) error {
 	return nil
 }
 
-// buildHeaders add the Key and Val values from inp.Items to Header of the HTTP
+// buildHeaders add the Key and Val values from in.Items to Header of the HTTP
 // Request using its Add, otherwise it will return error.
 func (r *request) buildHeaders(in *Input) error {
 	for _, i := range in.Items {
@@ -183,6 +192,7 @@ func (r *request) buildHeaders(in *Input) error {
 	return nil
 }
 
+// buildDefaultHeaders sets default headers.
 func (r *request) buildDefaultHeaders(in *Input) {
 	if in.BodyType == JSONBody {
 		if r.Header.Get("Accept") == "" {

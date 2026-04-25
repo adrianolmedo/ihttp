@@ -78,12 +78,12 @@ func NewInput(args []string, opts Options) (*Input, error) {
 		return nil, err
 	}
 	in := Input{Options: opts}
-	// Set Items by parsing args to items.
+	// Set Items by parsing args to items and validate them.
 	err := in.processItems(items)
 	if err != nil {
 		return nil, err
 	}
-	// Set StdinData via pipeline or -raw flag.
+	// Set StdinData via pipeline or -raw flag
 	err = in.processStdin(os.Stdin)
 	if err != nil {
 		return nil, err
@@ -111,11 +111,17 @@ func (in *Input) processItems(items []string) error {
 	in.Items = nil
 	seps := SepsGroupAllItems()
 	for _, raw := range items {
-		it, err := parseItem(raw, seps)
+		item, err := parseItem(raw, seps)
 		if err != nil {
 			return err
 		}
-		in.Items = append(in.Items, it)
+		in.Items = append(in.Items, item)
+	}
+	// Validate separator rules that depend on options.
+	for _, it := range in.Items {
+		if it.Sep == SepFileUpload && !in.Options.Form && !in.Options.Multipart {
+			return fmt.Errorf("invalid file fields (perhaps you meant -form?): %s", it.Key)
+		}
 	}
 	return nil
 }
@@ -142,20 +148,16 @@ func (in *Input) processBodyType() {
 		return
 	}
 	// 2. Inference based on item separators
-	var hasJSON, hasFile, hasData bool
+	var hasJSON, hasData bool
 	for _, it := range in.Items {
 		switch it.Sep {
 		case SepDataRawJSON:
 			hasJSON = true
-		case SepFileUpload:
-			hasFile = true
 		case SepDataString:
 			hasData = true
 		}
 	}
 	switch {
-	case hasFile:
-		in.BodyType = MultipartBody
 	case hasJSON:
 		in.BodyType = JSONBody
 	case hasData:
