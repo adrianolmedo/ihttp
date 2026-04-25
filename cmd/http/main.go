@@ -40,7 +40,7 @@ Options:
       
             		$ echo data | http httpbingo.org/post
       
-            	Or have HTTPie load the raw data from a file:
+            	Or have iHTTP load the raw data from a file:
       
             		$ http httpbingo.org/post @data.txt
 
@@ -89,13 +89,13 @@ func main() {
 	}
 	opts.SetScheme(*scheme)
 	// Parse args to Input values.
-	inp, err := ihttp.NewInput(flag.Args(), opts)
+	in, err := ihttp.NewInput(flag.Args(), opts)
 	if err != nil {
 		errAndExit(err)
 	}
 	// Optional show debug info.
 	if *debug {
-		dbug := &dbug{opts: opts, inp: inp}
+		dbug := &dbug{opts: opts, in: in}
 		dbg, err := dbug.toString()
 		if err != nil {
 			errAndExit(err)
@@ -103,11 +103,11 @@ func main() {
 		dbg = fmt.Sprintf("iHTTP v%s\n\n%s\n\n", ihttp.Version, dbg)
 		fmt.Fprint(os.Stdout, dbg)
 	}
-	req, err := ihttp.NewRequest(inp)
+	req, body, err := ihttp.NewRequest(in)
 	if err != nil {
 		errAndExit(err)
 	}
-	out, err := ihttp.NewOutput(req, opts)
+	out, err := ihttp.NewOutput(req, body, opts)
 	if err != nil {
 		errAndExit(err)
 	}

@@ -10,7 +10,7 @@ import (
 // dbug debug output when Options.Debug is true.
 type dbug struct {
 	opts ihttp.Options
-	inp  *ihttp.Input
+	in   *ihttp.Input
 }
 
 // opts only debug output of ihttp.Options.
@@ -26,7 +26,8 @@ type opts struct {
 	Verbose   bool
 }
 
-type inp struct {
+// in only for debug output of Input.
+type in struct {
 	Method    string
 	URL       string
 	BodyType  string
@@ -41,7 +42,7 @@ type inp struct {
 func (d *dbug) toString() (string, error) {
 	dbg := struct {
 		opts `json:"Options"`
-		inp  `json:"Input"`
+		in   `json:"Input"`
 	}{
 		opts: opts{
 			Scheme:    d.opts.Scheme(),
@@ -54,11 +55,11 @@ func (d *dbug) toString() (string, error) {
 			Offline:   d.opts.Offline,
 			Verbose:   d.opts.Verbose,
 		},
-		inp: inp{
-			Method:    d.inp.Method,
-			URL:       d.inp.URL,
-			BodyType:  d.inp.BodyType.String(),
-			StdinData: d.inp.StdinData,
+		in: in{
+			Method:    d.in.Method,
+			URL:       d.in.URL,
+			BodyType:  d.in.BodyType.String(),
+			StdinData: d.in.StdinData,
 		},
 	}
 	debugData, err := json.MarshalIndent(dbg, "", ihttp.TabSpaces)
