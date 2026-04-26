@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 )
 
@@ -80,16 +81,20 @@ func buildBody(in *Input) (bodyTuple, error) {
 // buildJSONBody constructs the body content and content type for a JSON body based.
 func buildJSONBody(items []item) (bodyTuple, error) {
 	data := make(map[string]any)
-	for _, it := range items {
-		switch it.Sep {
+	for _, item := range items {
+		switch item.Sep {
+
 		case SepDataString:
-			data[it.Key] = it.Val
+			path := parseKey(item.Key)
+			insertJSON(data, path, item.Val)
+
 		case SepDataRawJSON:
+			path := parseKey(item.Key)
 			var v any
-			if err := json.Unmarshal([]byte(it.Val), &v); err != nil {
-				return bodyTuple{}, fmt.Errorf("invalid JSON value for %q: %w", it.Key, err)
+			if err := json.Unmarshal([]byte(item.Val), &v); err != nil {
+				return bodyTuple{}, fmt.Errorf("invalid JSON value for %q: %w", item.Key, err)
 			}
-			data[it.Key] = v
+			insertJSON(data, path, v)
 		}
 	}
 	b, err := json.Marshal(data)
@@ -97,6 +102,132 @@ func buildJSONBody(items []item) (bodyTuple, error) {
 		return bodyTuple{}, err
 	}
 	return bodyTuple{content: b, contentType: "application/json"}, nil
+}
+
+// parseKey splits a key like "a[b][c]" into its parts: ["a", "b", "c"].
+func parseKey(k string) []string {
+	var parts []string
+	buf := ""
+	for i := 0; i < len(k); i++ {
+		switch k[i] {
+		case '[':
+			if buf != "" {
+				parts = append(parts, buf)
+				buf = ""
+			}
+		case ']':
+			parts = append(parts, buf)
+			buf = ""
+		default:
+			buf += string(k[i])
+		}
+	}
+	if buf != "" {
+		parts = append(parts, buf)
+	}
+	return parts
+}
+
+// insertJSON inserts a value into a nested map or slice structure based on the
+// provided path.
+func insertJSON(root map[string]any, path []string, value any) {
+	var current any = root
+	for i, p := range path {
+		last := i == len(path)-1
+		switch node := current.(type) {
+		case map[string]any:
+			if last {
+				if existing, ok := node[p]; ok {
+					node[p] = mergeValue(existing, value)
+				} else {
+					node[p] = value
+				}
+				return
+			}
+			next, exists := node[p]
+			if !exists {
+				if isIndex(path[i+1]) {
+					next = []any{}
+				} else {
+					next = map[string]any{}
+				}
+				node[p] = next
+			}
+			current = next
+
+		case []any:
+			if p == "" {
+
+				// append []
+				if last {
+					node = append(node, value)
+					return
+				}
+				newMap := map[string]any{}
+				node = append(node, newMap)
+				current = newMap
+				continue
+			}
+			idx, err := strconv.Atoi(p)
+			if err != nil {
+				panic("invalid index in path")
+			}
+
+			// expand
+			for len(node) <= idx {
+				node = append(node, nil)
+			}
+			if last {
+				if node[idx] != nil {
+					node[idx] = mergeValue(node[idx], value)
+				} else {
+					node[idx] = value
+				}
+				return
+			}
+			if node[idx] == nil {
+				if isIndex(path[i+1]) {
+					node[idx] = []any{}
+				} else {
+					node[idx] = map[string]any{}
+				}
+			}
+			current = node[idx]
+		}
+	}
+}
+
+// mergeValue merges an existing value with an incoming value, combining them
+// into a slice if necessary.
+func mergeValue(existing, incoming any) any {
+	switch e := existing.(type) {
+	case []any:
+		return append(e, incoming)
+	case map[string]any:
+		if m2, ok := incoming.(map[string]any); ok {
+			for k, v := range m2 {
+				if old, exists := e[k]; exists {
+					e[k] = mergeValue(old, v)
+				} else {
+					e[k] = v
+				}
+			}
+			return e
+		}
+		return []any{e, incoming}
+	default:
+		return []any{e, incoming}
+	}
+}
+
+// isIndex checks if a string is an integer index (e.g., "0", "1", etc.)
+// or empty (for appending to arrays).
+func isIndex(s string) bool {
+	if s == "" {
+		return true
+	}
+	_, err := strconv.Atoi(s)
+	return err == nil
 }
 
 // buildFormBody constructs the body content and content type for a form body based.
@@ -135,6 +266,7 @@ func buildMultipartBody(items []item, boundary string) (bodyTuple, error) {
 			if err := w.WriteField(it.Key, it.Val); err != nil {
 				return bodyTuple{}, err
 			}
+
 		case SepFileUpload:
 			f, err := os.Open(it.Val)
 			if err != nil {
@@ -199,6 +331,7 @@ func (r *request) buildDefaultHeaders(in *Input) {
 			r.Header.Set("Accept", "application/json, */*;q=0.5")
 		}
 		if r.Header.Get("Content-Type") == "" {
+
 			// already set from buildBody, but guard anyway
 			r.Header.Set("Content-Type", "application/json")
 		}
