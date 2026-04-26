@@ -88,11 +88,13 @@ func main() {
 		Verbose:   *verbose,
 	}
 	opts.SetScheme(*scheme)
+
 	// Parse args to Input values.
 	in, err := ihttp.NewInput(flag.Args(), opts)
 	if err != nil {
 		errAndExit(err)
 	}
+
 	// Optional show debug info.
 	if *debug {
 		dbug := &dbug{opts: opts, in: in}

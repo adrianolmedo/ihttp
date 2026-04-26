@@ -60,15 +60,18 @@ func NewInput(args []string, opts Options) (*Input, error) {
 	case 0:
 		return nil, errors.New("URL is required")
 	case 1:
+
 		// Invoked as `$ http url`
 		url = args[0]
 	default:
 		if reMethod.MatchString(args[0]) {
+
 			// For example `$ http url foo=var field:value`
 			method = args[0] // url
 			url = args[1]    // foo=var
 			items = args[2:] // field:value
 		} else {
+
 			// For example `$ http url/get field:value`
 			url = args[0]    // url/get
 			items = args[1:] // field:value
@@ -78,23 +81,28 @@ func NewInput(args []string, opts Options) (*Input, error) {
 		return nil, err
 	}
 	in := Input{Options: opts}
+
 	// Set Items by parsing args to items and validate them.
 	err := in.processItems(items)
 	if err != nil {
 		return nil, err
 	}
+
 	// Set StdinData via pipeline or -raw flag
 	err = in.processStdin(os.Stdin)
 	if err != nil {
 		return nil, err
 	}
+
 	// Set BodyType by StdinData or Items and options flags.
 	in.processBodyType()
+
 	// Set HTTP Method.
 	err = in.processMethod(method)
 	if err != nil {
 		return nil, err
 	}
+
 	// Set URL.
 	err = in.processURL(url)
 	if err != nil {
@@ -117,6 +125,7 @@ func (in *Input) processItems(items []string) error {
 		}
 		in.Items = append(in.Items, item)
 	}
+
 	// Validate separator rules that depend on options.
 	for _, it := range in.Items {
 		if it.Sep == SepFileUpload && !in.Options.Form && !in.Options.Multipart {
@@ -142,11 +151,13 @@ func (in *Input) processBodyType() {
 		in.BodyType = FormBody
 		return
 	}
+
 	// If the user uses -json, we force JSONBody
 	if in.Options.JSON {
 		in.BodyType = JSONBody
 		return
 	}
+
 	// 2. Inference based on item separators
 	var hasJSON, hasData bool
 	for _, it := range in.Items {
@@ -161,10 +172,12 @@ func (in *Input) processBodyType() {
 	case hasJSON:
 		in.BodyType = JSONBody
 	case hasData:
+
 		// If there are data items (key=val) but -form is not specified,
 		// we assume JSON by default.
 		in.BodyType = JSONBody
 	default:
+
 		// If there are no data items and no flags, the body will be empty.
 		in.BodyType = EmptyBody
 	}
@@ -182,6 +195,7 @@ func (in *Input) processStdin(stdin io.Reader) error {
 	if err != nil {
 		return err
 	}
+
 	// raw flag override
 	if in.Options.Raw != "" {
 		in.StdinData = []byte(in.Options.Raw)
@@ -254,6 +268,7 @@ func guessMethod(bodyType BodyType) string {
 func (in *Input) processURL(url string) error {
 	// Prepare the url for add the scheme: `http ://domain.com` → `http://domain.com`.
 	url = strings.TrimPrefix(url, "://")
+
 	// Check scheme: if the URL doesn't specify the protocol,
 	// then precede it with http:// or https://
 	if !reScheme.MatchString(url) {
@@ -261,6 +276,7 @@ func (in *Input) processURL(url string) error {
 		if in.Options.Scheme() == "https" {
 			scheme = "https://"
 		}
+
 		// See if we're using curl style shorthand for localhost, e.g.
 		// :3000/foo, if is success it will be return a slice with following elements:
 		//

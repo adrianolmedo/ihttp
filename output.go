@@ -68,8 +68,10 @@ func sortHeaderKeys(h http.Header) []string {
 func (o *Output) writeRequest() {
 	o.withErr(func() error {
 		req := o.Request
+
 		// Request line
 		o.sb.WriteString(req.Method + " " + req.URL.RequestURI() + " " + req.Proto + "\n")
+
 		// Host header — prefer req.Host (user override), fall back to URL host
 		host := req.Host
 		if host == "" {

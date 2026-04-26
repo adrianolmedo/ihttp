@@ -42,6 +42,7 @@ func parseItem(arg string, seps []string) (item, error) {
 			continue
 		}
 		minPos := -1
+
 		// chosenSep is the separator that is found at the minPos.
 		// We need to keep track of it to split the token value correctly.
 		var chosenSep string
@@ -59,6 +60,7 @@ func parseItem(arg string, seps []string) (item, error) {
 		if minPos != -1 {
 			r := strings.SplitN(t.value, chosenSep, 2)
 			keyLeft, valueRight := r[0], r[1]
+
 			// Rebuild the key and value by concatenating the tokens before
 			// and after the separator.
 			key := rebuild(tokens[:i]) + keyLeft
@@ -100,11 +102,13 @@ func tokenize(arg string, seps []string) []token {
 			if i+1 < len(arg) {
 				nextChar := string(arg[i+1])
 				if inStrSlice(nextChar, seps) {
+
 					// Save what we have accumulated so far.
 					if current.Len() > 0 {
 						tokens = append(tokens, token{value: current.String()})
 						current.Reset()
 					}
+
 					// Save the escaped character as a special token.
 					tokens = append(tokens, token{value: nextChar, escaped: true})
 					i++ // Skip the next character as it's part of the escape sequence.
