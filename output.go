@@ -12,8 +12,8 @@ import (
 
 // Output write and represent the HTTP Response builded from Request.
 //
-// Output has strings.Builder for design an output string for os.Stdout
-// and catch an error during its processes for os.Stderr.
+// Output has strings.Builder for design an output string for os.Stdout and catch
+// an error during its processes for os.Stderr.
 type Output struct {
 	Request     *http.Request
 	Options     Options

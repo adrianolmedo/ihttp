@@ -15,8 +15,8 @@ type Options struct {
 	scheme    string
 }
 
-// Scheme return the value of the scheme unexported field by defalut will
-// return `http` if the scheme is an empty string.
+// Scheme return the value of the scheme unexported field by defalut will return
+// `http` if the scheme is an empty string.
 func (o *Options) Scheme() string {
 	if o.scheme == "" {
 		return "http"
@@ -24,8 +24,8 @@ func (o *Options) Scheme() string {
 	return o.scheme
 }
 
-// SetScheme set value for the scheme unexported field. Its value can be
-// obtained with the Scheme method.
+// SetScheme set value for the scheme unexported field. Its value can be obtained
+// with the Scheme method.
 func (o *Options) SetScheme(s string) {
 	o.scheme = s
 }
