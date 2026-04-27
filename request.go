@@ -135,27 +135,54 @@ func buildJSONBody(items []item) (bodyTuple, error) {
 // For example, "foo[bar][baz]" would be parsed into ["foo", "bar", "baz"].
 func parseKey(k string) ([]string, error) {
 	var parts []string
-	buf := ""
+	var buf strings.Builder
+
+	inBracket := false
+
 	for i := 0; i < len(k); i++ {
-		switch k[i] {
-		case '[':
-			if buf != "" {
-				parts = append(parts, buf)
-				buf = ""
+		ch := k[i]
+
+		switch ch {
+
+		case '\\':
+			// escape: tomar siguiente char literal
+			if i+1 >= len(k) {
+				return nil, fmt.Errorf("invalid escape at end of %q", k)
 			}
+			i++
+			buf.WriteByte(k[i])
+
+		case '[':
+			if inBracket {
+				return nil, fmt.Errorf("unexpected '[' in %q", k)
+			}
+			if buf.Len() > 0 {
+				parts = append(parts, buf.String())
+				buf.Reset()
+			}
+			inBracket = true
+
 		case ']':
-			parts = append(parts, buf)
-			buf = ""
+			if !inBracket {
+				return nil, fmt.Errorf("unexpected ']' in %q", k)
+			}
+			parts = append(parts, buf.String())
+			buf.Reset()
+			inBracket = false
+
 		default:
-			buf += string(k[i])
+			buf.WriteByte(ch)
 		}
 	}
-	if strings.Contains(k, "[") && !strings.Contains(k, "]") {
-		return nil, fmt.Errorf("syntax error: missing ']' in %q", k)
+
+	if inBracket {
+		return nil, fmt.Errorf("missing ']' in %q", k)
 	}
-	if buf != "" {
-		parts = append(parts, buf)
+
+	if buf.Len() > 0 {
+		parts = append(parts, buf.String())
 	}
+
 	return parts, nil
 }
 
