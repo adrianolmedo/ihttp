@@ -131,34 +131,43 @@ func buildJSONBody(items []item) (bodyTuple, error) {
 	}, nil
 }
 
+// pathSegment represents one parsed segment of a bracket-notation key.
+// For example, value "a[0][b]" would be parsed into segments: "a", "0", and "b".
+// The "escaped" field indicates whether the segment was escaped with a backslash,
+// which affects how it should be treated (e.g., as a literal key rather than an
+// array index).
+type pathSegment struct {
+	value   string
+	escaped bool // true when the value was preceded by \ (treat int as string key)
+}
+
 // parseKey parses a key with bracket notation into a slice of path segments.
 // For example, "foo[bar][baz]" would be parsed into ["foo", "bar", "baz"].
-func parseKey(k string) ([]string, error) {
-	var parts []string
+func parseKey(k string) ([]pathSegment, error) {
+	var parts []pathSegment
 	var buf strings.Builder
-
+	var nextEscaped bool
 	inBracket := false
 
 	for i := 0; i < len(k); i++ {
 		ch := k[i]
-
 		switch ch {
-
 		case '\\':
-			// escape: tomar siguiente char literal
 			if i+1 >= len(k) {
 				return nil, fmt.Errorf("invalid escape at end of %q", k)
 			}
 			i++
 			buf.WriteByte(k[i])
+			nextEscaped = true
 
 		case '[':
 			if inBracket {
 				return nil, fmt.Errorf("unexpected '[' in %q", k)
 			}
 			if buf.Len() > 0 {
-				parts = append(parts, buf.String())
+				parts = append(parts, pathSegment{value: buf.String(), escaped: nextEscaped})
 				buf.Reset()
+				nextEscaped = false
 			}
 			inBracket = true
 
@@ -166,8 +175,9 @@ func parseKey(k string) ([]string, error) {
 			if !inBracket {
 				return nil, fmt.Errorf("unexpected ']' in %q", k)
 			}
-			parts = append(parts, buf.String())
+			parts = append(parts, pathSegment{value: buf.String(), escaped: nextEscaped})
 			buf.Reset()
+			nextEscaped = false
 			inBracket = false
 
 		default:
@@ -178,25 +188,23 @@ func parseKey(k string) ([]string, error) {
 	if inBracket {
 		return nil, fmt.Errorf("missing ']' in %q", k)
 	}
-
 	if buf.Len() > 0 {
-		parts = append(parts, buf.String())
+		parts = append(parts, pathSegment{value: buf.String(), escaped: nextEscaped})
 	}
-
 	return parts, nil
 }
 
 // insertJSON inserts a value into a nested map or slice structure based on the
 // provided path.
-func insertJSON(current any, path []string, value any) (any, error) {
+func insertJSON(current any, path []pathSegment, value any) (any, error) {
 	if len(path) == 0 {
 		return value, nil
 	}
-	p := path[0]
+	seg := path[0]
 	rest := path[1:]
 
-	// MAP
-	if !isIndex(p) {
+	// Treat as map key when: not an index pattern, OR explicitly escaped.
+	if !isIndex(seg.value) || seg.escaped {
 		var obj map[string]any
 		if current == nil {
 			obj = map[string]any{}
@@ -204,15 +212,14 @@ func insertJSON(current any, path []string, value any) (any, error) {
 			var ok bool
 			obj, ok = current.(map[string]any)
 			if !ok {
-				// expected map but got something else (e.g., array or primitive)
-				return nil, fmt.Errorf("type error: expected object at %q", p)
+				return nil, fmt.Errorf("type error: expected object at %q", seg.value)
 			}
 		}
-		updated, err := insertJSON(obj[p], rest, value)
+		updated, err := insertJSON(obj[seg.value], rest, value)
 		if err != nil {
 			return nil, err
 		}
-		obj[p] = updated
+		obj[seg.value] = updated
 		return obj, nil
 	}
 
@@ -224,12 +231,12 @@ func insertJSON(current any, path []string, value any) (any, error) {
 		var ok bool
 		arr, ok = current.([]any)
 		if !ok {
-			return nil, fmt.Errorf("type error: expected array at %q", p)
+			return nil, fmt.Errorf("type error: expected array at %q", seg.value)
 		}
 	}
 
 	// append []
-	if p == "" {
+	if seg.value == "" {
 		if len(rest) == 0 {
 			return append(arr, value), nil
 		}
@@ -240,8 +247,8 @@ func insertJSON(current any, path []string, value any) (any, error) {
 		return append(arr, newItem), nil
 	}
 
-	// index
-	idx, _ := strconv.Atoi(p)
+	// numeric index
+	idx, _ := strconv.Atoi(seg.value)
 	for len(arr) <= idx {
 		arr = append(arr, nil)
 	}
