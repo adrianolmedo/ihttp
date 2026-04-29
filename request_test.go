@@ -11,52 +11,47 @@ func TestParseKey(t *testing.T) {
 	tt := []struct {
 		name        string
 		input       string
-		want        []pathSegment
+		want        []keyPath
 		errExpected bool
 	}{
 		{
 			name:  "simple key",
 			input: "foo",
-			want: []pathSegment{
+			want: []keyPath{
 				{value: "foo", escaped: false},
 			},
-			errExpected: false,
 		},
 		{
 			name:  "nested brackets",
 			input: "foo[bar][baz]",
-			want: []pathSegment{
+			want: []keyPath{
 				{value: "foo", escaped: false},
 				{value: "bar", escaped: false},
 				{value: "baz", escaped: false},
 			},
-			errExpected: false,
 		},
 		{
 			name:  "numeric index",
 			input: "foo[0]",
-			want: []pathSegment{
+			want: []keyPath{
 				{value: "foo", escaped: false},
 				{value: "0", escaped: false},
 			},
-			errExpected: false,
 		},
 		{
 			name:  "escaped numeric treated as string",
 			input: `foo[\1]`,
-			want: []pathSegment{
+			want: []keyPath{
 				{value: "foo", escaped: false},
 				{value: "1", escaped: true},
 			},
-			errExpected: false,
 		},
 		{
 			name:  "escaped bracket literal",
 			input: `foo\[bar\]`,
-			want: []pathSegment{
+			want: []keyPath{
 				{value: "foo[bar]", escaped: true},
 			},
-			errExpected: false,
 		},
 		{
 			name:        "missing closing bracket",
@@ -94,35 +89,31 @@ func TestInsertJSON(t *testing.T) {
 	tt := []struct {
 		name  string
 		start any
-		path  []pathSegment
+		path  []keyPath
 		value any
 		want  any
 	}{
 		{
 			name:  "flat key",
-			start: nil,
-			path:  []pathSegment{{value: "foo"}},
+			path:  []keyPath{{value: "foo"}},
 			value: "bar",
 			want:  map[string]any{"foo": "bar"},
 		},
 		{
 			name:  "numeric index creates array",
-			start: nil,
-			path:  []pathSegment{{value: "0"}},
+			path:  []keyPath{{value: "0"}},
 			value: "x",
 			want:  []any{"x"},
 		},
 		{
 			name:  "escaped numeric creates map key",
-			start: nil,
-			path:  []pathSegment{{value: "1", escaped: true}},
+			path:  []keyPath{{value: "1", escaped: true}},
 			value: "stringified",
 			want:  map[string]any{"1": "stringified"},
 		},
 		{
-			name:  "nested map",
-			start: nil,
-			path: []pathSegment{
+			name: "nested map",
+			path: []keyPath{
 				{value: "a"},
 				{value: "b"},
 			},
@@ -130,9 +121,8 @@ func TestInsertJSON(t *testing.T) {
 			want:  map[string]any{"a": map[string]any{"b": 42}},
 		},
 		{
-			name:  "append to array with empty segment",
-			start: nil,
-			path: []pathSegment{
+			name: "append to array with empty segment",
+			path: []keyPath{
 				{value: "arr"},
 				{value: ""},
 			},
@@ -140,9 +130,8 @@ func TestInsertJSON(t *testing.T) {
 			want:  map[string]any{"arr": []any{"item"}},
 		},
 		{
-			name:  "sparse array pads with nil",
-			start: nil,
-			path: []pathSegment{
+			name: "sparse array pads with nil",
+			path: []keyPath{
 				{value: "arr"},
 				{value: "2"},
 			},

@@ -48,11 +48,15 @@ func NewRequest(in *Input) (*http.Request, []byte, error) {
 	return r.Request, b.content, nil
 }
 
+// bodyTuple is a simple struct to hold the content and content type of the
+// request body.
 type bodyTuple struct {
 	content     []byte
 	contentType string
 }
 
+// buildBody builds the body content and content type based on the [BodyType]
+// specified in the [Input].
 func buildBody(in *Input) (bodyTuple, error) {
 	switch in.BodyType {
 	case EmptyBody:
@@ -78,7 +82,8 @@ func buildBody(in *Input) (bodyTuple, error) {
 	}
 }
 
-// buildJSONBody constructs the body content and content type for a JSON body based.
+// buildJSONBody constructs the body content and content type for a JSON body
+// based on the provided items.
 func buildJSONBody(items []item) (bodyTuple, error) {
 	var root any
 
@@ -131,20 +136,20 @@ func buildJSONBody(items []item) (bodyTuple, error) {
 	}, nil
 }
 
-// pathSegment represents one parsed segment of a bracket-notation key.
+// keyPath represents one parsed segment of a bracket-notation key.
 // For example, value "a[0][b]" would be parsed into segments: "a", "0", and "b".
 // The "escaped" field indicates whether the segment was escaped with a backslash,
 // which affects how it should be treated (e.g., as a literal key rather than an
 // array index).
-type pathSegment struct {
+type keyPath struct {
 	value   string
 	escaped bool // true when the value was preceded by \ (treat int as string key)
 }
 
 // parseKey parses a key with bracket notation into a slice of path segments.
 // For example, "foo[bar][baz]" would be parsed into ["foo", "bar", "baz"].
-func parseKey(k string) ([]pathSegment, error) {
-	var parts []pathSegment
+func parseKey(k string) ([]keyPath, error) {
+	var parts []keyPath
 	var buf strings.Builder
 	var nextEscaped bool
 	inBracket := false
@@ -165,7 +170,7 @@ func parseKey(k string) ([]pathSegment, error) {
 				return nil, fmt.Errorf("unexpected '[' in %q", k)
 			}
 			if buf.Len() > 0 {
-				parts = append(parts, pathSegment{value: buf.String(), escaped: nextEscaped})
+				parts = append(parts, keyPath{value: buf.String(), escaped: nextEscaped})
 				buf.Reset()
 				nextEscaped = false
 			}
@@ -175,7 +180,7 @@ func parseKey(k string) ([]pathSegment, error) {
 			if !inBracket {
 				return nil, fmt.Errorf("unexpected ']' in %q", k)
 			}
-			parts = append(parts, pathSegment{value: buf.String(), escaped: nextEscaped})
+			parts = append(parts, keyPath{value: buf.String(), escaped: nextEscaped})
 			buf.Reset()
 			nextEscaped = false
 			inBracket = false
@@ -189,14 +194,14 @@ func parseKey(k string) ([]pathSegment, error) {
 		return nil, fmt.Errorf("missing ']' in %q", k)
 	}
 	if buf.Len() > 0 {
-		parts = append(parts, pathSegment{value: buf.String(), escaped: nextEscaped})
+		parts = append(parts, keyPath{value: buf.String(), escaped: nextEscaped})
 	}
 	return parts, nil
 }
 
 // insertJSON inserts a value into a nested map or slice structure based on the
 // provided path.
-func insertJSON(current any, path []pathSegment, value any) (any, error) {
+func insertJSON(current any, path []keyPath, value any) (any, error) {
 	if len(path) == 0 {
 		return value, nil
 	}
