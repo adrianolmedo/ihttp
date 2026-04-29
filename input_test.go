@@ -140,7 +140,7 @@ func TestProcessItems(t *testing.T) {
 			errExpected: false,
 		},
 		{
-			name:        "Error localhost",
+			name:        "error localhost",
 			args:        []string{"query==value", "localhost"},
 			errExpected: true,
 		},

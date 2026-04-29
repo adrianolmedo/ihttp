@@ -77,11 +77,11 @@ func parseItem(orig string, seps []string) (item, error) {
 	return item{}, fmt.Errorf("%s is not a valid value", orig)
 }
 
-// rebuild joins the values of the tokens into a single string,
-// preserving the original order.
-func rebuild(tokens []token) string {
+// rebuild joins the values of the tokens into a single string, preserving the
+// original order.
+func rebuild(tks []token) string {
 	var sb strings.Builder
-	for _, t := range tokens {
+	for _, t := range tks {
 		sb.WriteString(t.value)
 	}
 	return sb.String()
