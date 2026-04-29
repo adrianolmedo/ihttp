@@ -362,7 +362,7 @@ func (r *request) buildHeaders(in *Input) error {
 			}
 		case SepHeaderEmpty:
 			if i.Val == "" {
-				return fmt.Errorf("invalid item %s (to specify an empty header use `Header;`)", i.Arg)
+				return fmt.Errorf("invalid item %s (to specify an empty header use `Header;`)", i.Orig)
 			}
 			r.Header.Add(i.Key, i.Val)
 		}

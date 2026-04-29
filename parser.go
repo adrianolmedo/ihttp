@@ -18,8 +18,8 @@ type item struct {
 	// Sep is the separator of an argument in the CLI.
 	Sep string
 
-	// Arg represent a fully argument from the CLI after the URL.
-	Arg string
+	// Orig represent a fully argument from the CLI after the URL.
+	Orig string
 }
 
 // token it represents a piece of the original string.
@@ -36,8 +36,8 @@ type token struct {
 // thereof). Literal back slash characters have to be escaped as well (`\\`).
 //
 // parseItem is used internally to parse items in [Input.processItems] method.
-func parseItem(arg string, seps []string) (item, error) {
-	tokens := tokenize(arg, seps)
+func parseItem(orig string, seps []string) (item, error) {
+	tokens := tokenize(orig, seps)
 	for i, t := range tokens {
 		if t.escaped {
 			continue
@@ -67,14 +67,14 @@ func parseItem(arg string, seps []string) (item, error) {
 			key := rebuild(tokens[:i]) + keyLeft
 			value := valueRight + rebuild(tokens[i+1:])
 			return item{
-				Key: key,
-				Val: value,
-				Sep: chosenSep,
-				Arg: arg,
+				Key:  key,
+				Val:  value,
+				Sep:  chosenSep,
+				Orig: orig,
 			}, nil
 		}
 	}
-	return item{}, fmt.Errorf("%s is not a valid value", arg)
+	return item{}, fmt.Errorf("%s is not a valid value", orig)
 }
 
 // rebuild joins the values of the tokens into a single string,
