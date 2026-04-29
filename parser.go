@@ -2,6 +2,7 @@ package ihttp
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 )
 
@@ -27,9 +28,9 @@ type token struct {
 	escaped bool
 }
 
-// parseItem parse a raw string argument that it contains a separator
-// represented in the group of seperators (seps): headers, form data
-// (body request) and other key-value pair types.
+// parseItem parse a raw string that it contains a separator represented in the
+// group of seperators (seps): headers, form data (body request) and other
+// key-value pair types.
 //
 // The back slash escaped characters aren't considered as seps (or parts
 // thereof). Literal back slash characters have to be escaped as well (`\\`).
@@ -101,7 +102,7 @@ func tokenize(arg string, seps []string) []token {
 		if arg[i] == '\\' {
 			if i+1 < len(arg) {
 				nextChar := string(arg[i+1])
-				if inStrSlice(nextChar, seps) {
+				if slices.Contains(seps, nextChar) {
 
 					// Save what we have accumulated so far.
 					if current.Len() > 0 {
@@ -128,14 +129,4 @@ func tokenize(arg string, seps []string) []token {
 		tokens = append(tokens, token{value: current.String()})
 	}
 	return tokens
-}
-
-// inStrSlice return true if str is present in slice.
-func inStrSlice(str string, slice []string) bool {
-	for _, v := range slice {
-		if v == str {
-			return true
-		}
-	}
-	return false
 }

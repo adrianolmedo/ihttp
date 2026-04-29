@@ -82,7 +82,7 @@ func NewInput(args []string, opts Options) (*Input, error) {
 	}
 	in := Input{Options: opts}
 
-	// Set Items by parsing args to items and validate them.
+	// Set Items by parsing args to items.
 	err := in.processItems(items)
 	if err != nil {
 		return nil, err
@@ -118,8 +118,8 @@ func (in *Input) processItems(items []string) error {
 	}
 	in.Items = nil
 	seps := SepsGroupAllItems()
-	for _, raw := range items {
-		item, err := parseItem(raw, seps)
+	for _, item := range items {
+		item, err := parseItem(item, seps)
 		if err != nil {
 			return err
 		}
