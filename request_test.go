@@ -1,9 +1,11 @@
 package ihttp
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/url"
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -79,7 +81,7 @@ func TestParseKey(t *testing.T) {
 				t.Fatalf("unexpected error status: %v", err)
 			}
 			if !tc.errExpected && !reflect.DeepEqual(tc.want, got) {
-				t.Errorf("\nwant\t%#v\ngot\t%#v", tc.want, got)
+				t.Errorf("\ngot\t%#v\nwant\t%#v", got, tc.want)
 			}
 		})
 	}
@@ -149,7 +151,282 @@ func TestInsertJSON(t *testing.T) {
 				t.Fatal(err)
 			}
 			if !reflect.DeepEqual(tc.want, got) {
-				t.Errorf("\nwant\t%#v\ngot\t%#v", tc.want, got)
+				t.Errorf("\ngot\t%#v\nwant\t%#v", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestBuildJSONBody(t *testing.T) {
+	tt := []struct {
+		name string
+		args []string
+		want any
+	}{
+		{
+			name: "append to array",
+			args: []string{"", "bottle-on-wall[]:=1", "bottle-on-wall[]:=2", "bottle-on-wall[]:=3"},
+			want: map[string]any{
+				"bottle-on-wall": []any{float64(1), float64(2), float64(3)},
+			},
+		},
+		{
+			name: "mixed nested map and indexed array",
+			args: []string{
+				"",
+				"pet[species]=Dahut",
+				`pet[name]:="Hypatia"`,
+				"kids[1]=Thelma",
+				`kids[0]:="Ashley"`,
+			},
+			want: map[string]any{
+				"pet":  map[string]any{"species": "Dahut", "name": "Hypatia"},
+				"kids": []any{"Ashley", "Thelma"},
+			},
+		},
+		{
+			name: "array of objects",
+			args: []string{
+				"",
+				"pet[0][species]=Dahut",
+				"pet[0][name]=Hypatia",
+				"pet[1][species]=Felis Stultus",
+				`pet[1][name]:="Billie"`,
+			},
+			want: map[string]any{
+				"pet": []any{
+					map[string]any{"species": "Dahut", "name": "Hypatia"},
+					map[string]any{"species": "Felis Stultus", "name": "Billie"},
+				},
+			},
+		},
+		{
+			name: "deeply nested with sparse array",
+			args: []string{"", "wow[such][deep][3][much][power][!]=Amaze"},
+			want: map[string]any{
+				"wow": map[string]any{
+					"such": map[string]any{
+						"deep": []any{
+							nil, nil, nil,
+							map[string]any{
+								"much": map[string]any{
+									"power": map[string]any{"!": "Amaze"},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "mixed append and index",
+			args: []string{"", "mix[]=scalar", "mix[2]=something", `mix[4]:="something 2"`},
+			want: map[string]any{
+				"mix": []any{"scalar", nil, "something", nil, "something 2"},
+			},
+		},
+		{
+			name: "single append",
+			args: []string{"", "highlander[]=one"},
+			want: map[string]any{
+				"highlander": []any{"one"},
+			},
+		},
+		{
+			name: "escaped bracket in key literal",
+			args: []string{"", "error[good]=BOOM!", `error\[bad:="BOOM BOOM!"`},
+			want: map[string]any{
+				"error":     map[string]any{"good": "BOOM!"},
+				"error[bad": "BOOM BOOM!",
+			},
+		},
+		{
+			name: "special JSON values in array",
+			args: []string{
+				"",
+				"special[]:=true",
+				"special[]:=false",
+				`special[]:="true"`,
+				"special[]:=null",
+			},
+			want: map[string]any{
+				"special": []any{true, false, "true", nil},
+			},
+		},
+		{
+			name: "fully escaped bracket keys",
+			args: []string{
+				"",
+				`\[\]:=1`,
+				`escape\[d\]:=1`,
+				`escaped\[\]:=1`,
+				`e\[s\][c][a][p][\[ed\]][]:=1`,
+			},
+			want: map[string]any{
+				"[]":        float64(1),
+				"escape[d]": float64(1),
+				"escaped[]": float64(1),
+				"e[s]": map[string]any{
+					"c": map[string]any{
+						"a": map[string]any{
+							"p": map[string]any{
+								"[ed]": []any{float64(1)},
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "root array",
+			args: []string{"", "[]:=1", "[]=foo"},
+			want: []any{float64(1), "foo"},
+		},
+		{
+			name: "escaped nonbracket characters in keys",
+			args: []string{"", `\]:=1`, `\[\]1:=1`, `\[1\]\]:=1`},
+			want: map[string]any{
+				"]":    float64(1),
+				"[]1":  float64(1),
+				"[1]]": float64(1),
+			},
+		},
+		{
+			name: "escaped and unescaped brackets in same key",
+			args: []string{
+				"",
+				`foo\[bar\][baz]:=1`,
+				`foo\[bar\]\[baz\]:=3`,
+				`foo[bar][\[baz\]]:=4`,
+			},
+			want: map[string]any{
+				"foo[bar]":      map[string]any{"baz": float64(1)},
+				"foo[bar][baz]": float64(3),
+				"foo": map[string]any{
+					"bar": map[string]any{
+						"[baz]": float64(4),
+					},
+				},
+			},
+		},
+		{
+			name: "nested appends",
+			args: []string{"", "key[]:=1", "key[][]:=2", "key[][][]:=3", "key[][][]:=4"},
+			want: map[string]any{
+				"key": []any{float64(1), []any{float64(2)}, []any{[]any{float64(3)}}, []any{[]any{float64(4)}}},
+			},
+		},
+		{
+			name: "index then appends",
+			args: []string{"", "x[0]:=1", "x[]:=2", "x[]:=3", "x[][]:=4", "x[][]:=5"},
+			want: map[string]any{
+				"x": []any{float64(1), float64(2), float64(3), []any{float64(4)}, []any{float64(5)}},
+			},
+		},
+		{
+			name: "complex bar baz with index and append mixing",
+			args: []string{
+				":",
+				"foo[bar][5][]:=5",
+				"foo[bar][]:=6",
+				"foo[bar][][]:=7",
+				"foo[bar][][x]=dfasfdas",
+				`foo[baz]:=[1, 2, 3]`,
+				"foo[baz][]:=4",
+			},
+			want: map[string]any{
+				"foo": map[string]any{
+					"bar": []any{
+						nil, nil, nil, nil, nil,
+						[]any{float64(5)},
+						float64(6),
+						[]any{float64(7)},
+						map[string]any{"x": "dfasfdas"},
+					},
+					"baz": []any{float64(1), float64(2), float64(3), float64(4)},
+				},
+			},
+		},
+		{
+			name: "append then indexed merge and nested escape",
+			args: []string{
+				":",
+				"foo[]:=1",
+				"foo[]:=2",
+				"foo[][key]=value",
+				"foo[2][key 2]=value 2",
+				`foo[2][key \[]=value 3`,
+				`bar[nesting][under][!][empty][?][\\key]:=4`,
+			},
+			want: map[string]any{
+				"foo": []any{
+					float64(1),
+					float64(2),
+					map[string]any{
+						"key":   "value",
+						"key 2": "value 2",
+						"key [": "value 3",
+					},
+				},
+				"bar": map[string]any{
+					"nesting": map[string]any{
+						"under": map[string]any{
+							"!": map[string]any{
+								"empty": map[string]any{
+									"?": map[string]any{
+										`\key`: float64(4),
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			name: "escaped brackets as literal keys and nested escape combos",
+			args: []string{
+				":",
+				`foo\[key\]:=1`,
+				`bar\[1\]:=2`,
+				`quux[key\[escape\]]:=4`,
+				`quux[key 2][\\][\\\\][\\\[\]\\\]\\\[\n\\]:=5`,
+			},
+			want: map[string]any{
+				"foo[key]": float64(1),
+				"bar[1]":   float64(2),
+				"quux": map[string]any{
+					"key[escape]": float64(4),
+					"key 2": map[string]any{
+						`\`: map[string]any{
+							`\\`: map[string]any{
+								`\[]\]\[` + "n" + `\`: float64(5),
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	opts := Options{}
+	for _, tc := range tt {
+		t.Run(tc.name, func(t *testing.T) {
+			in, err := NewInput(tc.args, opts)
+			if err != nil {
+				t.Fatal(err)
+			}
+			got, err := buildJSONBody(in.Items)
+			if err != nil {
+				t.Fatal(err)
+			}
+			// Unmarshal the JSON bytes back into any for comparison.
+			var gotAny any
+			if err := json.Unmarshal(got.content, &gotAny); err != nil {
+				t.Fatal(err)
+			}
+			if !reflect.DeepEqual(tc.want, gotAny) {
+				t.Errorf("\ngot\t%#v\nwant\t%#v", gotAny, tc.want)
 			}
 		})
 	}
@@ -157,43 +434,90 @@ func TestInsertJSON(t *testing.T) {
 
 func TestBuildRequestBody(t *testing.T) {
 	tt := []struct {
-		name string
-		args []string
-		want bodyTuple
+		name        string
+		args        []string
+		opts        Options
+		wantType    string
+		errExpected bool
 	}{
 		{
-			name: "data=field",
-			args: []string{"url", "data=field"},
-			want: bodyTuple{
-				content:     nil,
-				contentType: "",
-			},
+			name:     "url only",
+			args:     []string{":"},
+			opts:     Options{},
+			wantType: "",
 		},
 		{
-			name: "data=field query==value",
-			args: []string{"url", "data=field", "query==value"},
-			want: bodyTuple{
-				content:     nil,
-				contentType: "",
-			},
+			name:     "url foo=bar",
+			args:     []string{":", "foo=bar"},
+			opts:     Options{},
+			wantType: "application/json",
+		},
+		{
+			name:     "-json url",
+			args:     []string{":"},
+			opts:     Options{JSON: true},
+			wantType: "application/json",
+		},
+		{
+			name:     "-form url foo=bar",
+			args:     []string{":", "foo=bar"},
+			opts:     Options{Form: true},
+			wantType: "application/x-www-form-urlencoded; charset=utf-8",
+		},
+		{
+			name:     "-multipart url foo=bar",
+			args:     []string{":", "foo=bar"},
+			opts:     Options{Multipart: true},
+			wantType: "multipart/form-data",
+		},
+		{
+			name:     "-form url file upload",
+			args:     []string{":", "file@examples/plain.txt"},
+			opts:     Options{Form: true},
+			wantType: "multipart/form-data",
+		},
+		{
+			name:     "-raw url",
+			args:     []string{":"},
+			opts:     Options{Raw: `{"foo":"bar"}`},
+			wantType: "application/json",
 		},
 	}
-	opts := Options{}
+
 	for _, tc := range tt {
 		t.Run(tc.name, func(t *testing.T) {
-			inp, err := NewInput(tc.args, opts)
+			inp, err := NewInput(tc.args, tc.opts)
 			if err != nil {
 				t.Fatal(err)
 			}
 			got, err := buildBody(inp)
-			if err != nil {
-				t.Fatal(err)
+			if (err != nil) != tc.errExpected {
+				t.Fatalf("unexpected error status: %v", err)
 			}
-			if !reflect.DeepEqual(tc.want, got) {
-				t.Errorf("%s\nwant\t%v\ngot\t%v", tc.name, tc.want, got)
+			if tc.errExpected {
+				return
+			}
+			// For multipart the boundary is random, so only check the prefix.
+			if tc.opts.Multipart || (tc.opts.Form && containsFile(inp.Items)) {
+				if !strings.HasPrefix(got.contentType, "multipart/form-data") {
+					t.Errorf("want content type prefixed %q, got %q", tc.wantType, got.contentType)
+				}
+				return
+			}
+			if got.contentType != tc.wantType {
+				t.Errorf("want content type %q, got %q", tc.wantType, got.contentType)
 			}
 		})
 	}
+}
+
+func containsFile(items []item) bool {
+	for _, it := range items {
+		if it.Sep == SepFileUpload {
+			return true
+		}
+	}
+	return false
 }
 
 func TestBuildHeaders(t *testing.T) {
@@ -268,7 +592,7 @@ func TestBuildHeaders(t *testing.T) {
 			}
 			got := r.Request.Header
 			if !tc.errExpected && !reflect.DeepEqual(tc.want, got) {
-				t.Errorf("%s\nwant\t%#v\ngot\t%#v", tc.name, tc.want, got)
+				t.Errorf("%s\ngot\t%#v\nwant\t%#v", tc.name, got, tc.want)
 			}
 		})
 	}
@@ -315,7 +639,7 @@ func TestBuildURLQuery(t *testing.T) {
 			//fmt.Printf("Query    %+v\n", r.Request.URL.Query())  // map[query:[value]]
 			got := r.Request.URL.Query()
 			if !reflect.DeepEqual(tc.want, got) {
-				t.Errorf("%s want %#v got %#v", tc.name, tc.want, got)
+				t.Errorf("%s got %#v want %#v", tc.name, got, tc.want)
 			}
 		})
 	}
