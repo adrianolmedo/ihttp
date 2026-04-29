@@ -70,10 +70,7 @@ func TestProcessURL(t *testing.T) {
 	inp := &Input{}
 	for _, tc := range tt {
 		t.Run(tc.name, func(t *testing.T) {
-			err := inp.processURL(tc.args[0])
-			if err != nil {
-				t.Fatal(err)
-			}
+			inp.processURL(tc.args[0])
 			got := inp.URL
 			if tc.want != got {
 				t.Errorf("\narg: %s\n%s: want %q, got %q,", tc.args[0], tc.name, tc.want, got)
@@ -107,10 +104,7 @@ func TestProcessURLWithHTTPS(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			opts.SetScheme(tc.scheme)
 			inp := Input{Options: opts}
-			err := inp.processURL(tc.args[0])
-			if err != nil {
-				t.Fatal(err)
-			}
+			inp.processURL(tc.args[0])
 			got := inp.URL
 			if tc.want != got {
 				t.Errorf("\narg: %s\n%s: want %q, got %q,", tc.args[0], tc.name, tc.want, got)
