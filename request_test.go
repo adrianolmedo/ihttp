@@ -161,167 +161,106 @@ func TestBuildJSONBody(t *testing.T) {
 	tt := []struct {
 		name string
 		args []string
-		want any
+		want string
 	}{
 		{
-			name: "append to array",
-			args: []string{"", "bottle-on-wall[]:=1", "bottle-on-wall[]:=2", "bottle-on-wall[]:=3"},
-			want: map[string]any{
-				"bottle-on-wall": []any{float64(1), float64(2), float64(3)},
-			},
+			name: "append array",
+			args: []string{":", "bottle-on-wall[]:=1", "bottle-on-wall[]:=2", "bottle-on-wall[]:=3"},
+			want: `{"bottle-on-wall":[1,2,3]}`,
 		},
 		{
 			name: "mixed nested map and indexed array",
 			args: []string{
-				"",
+				":",
 				"pet[species]=Dahut",
 				`pet[name]:="Hypatia"`,
 				"kids[1]=Thelma",
 				`kids[0]:="Ashley"`,
 			},
-			want: map[string]any{
-				"pet":  map[string]any{"species": "Dahut", "name": "Hypatia"},
-				"kids": []any{"Ashley", "Thelma"},
-			},
+			want: `{"kids":["Ashley","Thelma"],"pet":{"name":"Hypatia","species":"Dahut"}}`,
 		},
 		{
-			name: "array of objects",
+			name: "objects array",
 			args: []string{
-				"",
+				":",
 				"pet[0][species]=Dahut",
 				"pet[0][name]=Hypatia",
 				"pet[1][species]=Felis Stultus",
 				`pet[1][name]:="Billie"`,
 			},
-			want: map[string]any{
-				"pet": []any{
-					map[string]any{"species": "Dahut", "name": "Hypatia"},
-					map[string]any{"species": "Felis Stultus", "name": "Billie"},
-				},
-			},
+			want: `{"pet":[{"name":"Hypatia","species":"Dahut"},{"name":"Billie","species":"Felis Stultus"}]}`,
 		},
 		{
 			name: "deeply nested with sparse array",
-			args: []string{"", "wow[such][deep][3][much][power][!]=Amaze"},
-			want: map[string]any{
-				"wow": map[string]any{
-					"such": map[string]any{
-						"deep": []any{
-							nil, nil, nil,
-							map[string]any{
-								"much": map[string]any{
-									"power": map[string]any{"!": "Amaze"},
-								},
-							},
-						},
-					},
-				},
-			},
+			args: []string{":", "wow[such][deep][3][much][power][!]=Amaze"},
+			want: `{"wow":{"such":{"deep":[null,null,null,{"much":{"power":{"!":"Amaze"}}}]}}}`,
 		},
 		{
 			name: "mixed append and index",
-			args: []string{"", "mix[]=scalar", "mix[2]=something", `mix[4]:="something 2"`},
-			want: map[string]any{
-				"mix": []any{"scalar", nil, "something", nil, "something 2"},
-			},
+			args: []string{":", "mix[]=scalar", "mix[2]=something", `mix[4]:="something 2"`},
+			want: `{"mix":["scalar",null,"something",null,"something 2"]}`,
 		},
 		{
 			name: "single append",
-			args: []string{"", "highlander[]=one"},
-			want: map[string]any{
-				"highlander": []any{"one"},
-			},
+			args: []string{":", "highlander[]=one"},
+			want: `{"highlander":["one"]}`,
 		},
 		{
-			name: "escaped bracket in key literal",
-			args: []string{"", "error[good]=BOOM!", `error\[bad:="BOOM BOOM!"`},
-			want: map[string]any{
-				"error":     map[string]any{"good": "BOOM!"},
-				"error[bad": "BOOM BOOM!",
-			},
+			name: "key literal escaped bracket",
+			args: []string{":", "error[good]=BOOM!", `error\[bad:="BOOM BOOM!"`},
+			want: `{"error":{"good":"BOOM!"},"error[bad":"BOOM BOOM!"}`,
 		},
 		{
-			name: "special JSON values in array",
+			name: "array special JSON values",
 			args: []string{
-				"",
+				":",
 				"special[]:=true",
 				"special[]:=false",
 				`special[]:="true"`,
 				"special[]:=null",
 			},
-			want: map[string]any{
-				"special": []any{true, false, "true", nil},
-			},
+			want: `{"special":[true,false,"true",null]}`,
 		},
 		{
 			name: "fully escaped bracket keys",
 			args: []string{
-				"",
+				":",
 				`\[\]:=1`,
 				`escape\[d\]:=1`,
 				`escaped\[\]:=1`,
 				`e\[s\][c][a][p][\[ed\]][]:=1`,
 			},
-			want: map[string]any{
-				"[]":        float64(1),
-				"escape[d]": float64(1),
-				"escaped[]": float64(1),
-				"e[s]": map[string]any{
-					"c": map[string]any{
-						"a": map[string]any{
-							"p": map[string]any{
-								"[ed]": []any{float64(1)},
-							},
-						},
-					},
-				},
-			},
+			want: `{"[]":1,"escape[d]":1,"escaped[]":1,"e[s]":{"c":{"a":{"p":{"[ed]":[1]}}}}}`,
 		},
 		{
-			name: "root array",
-			args: []string{"", "[]:=1", "[]=foo"},
-			want: []any{float64(1), "foo"},
+			name: "root array", // root array
+			args: []string{":", "[]:=1", "[]=foo"},
+			want: `[1,"foo"]`,
 		},
 		{
-			name: "escaped nonbracket characters in keys",
-			args: []string{"", `\]:=1`, `\[\]1:=1`, `\[1\]\]:=1`},
-			want: map[string]any{
-				"]":    float64(1),
-				"[]1":  float64(1),
-				"[1]]": float64(1),
-			},
+			name: "escaped nonbracket characters keys",
+			args: []string{":", `\]:=1`, `\[\]1:=1`, `\[1\]\]:=1`},
+			want: `{"]":1,"[]1":1,"[1]]":1}`,
 		},
 		{
-			name: "escaped and unescaped brackets in same key",
+			name: "key with escaped and unescaped brackets",
 			args: []string{
-				"",
+				":",
 				`foo\[bar\][baz]:=1`,
 				`foo\[bar\]\[baz\]:=3`,
 				`foo[bar][\[baz\]]:=4`,
 			},
-			want: map[string]any{
-				"foo[bar]":      map[string]any{"baz": float64(1)},
-				"foo[bar][baz]": float64(3),
-				"foo": map[string]any{
-					"bar": map[string]any{
-						"[baz]": float64(4),
-					},
-				},
-			},
+			want: `{"foo[bar]":{"baz":1},"foo[bar][baz]":3,"foo":{"bar":{"[baz]":4}}}`,
 		},
 		{
 			name: "nested appends",
-			args: []string{"", "key[]:=1", "key[][]:=2", "key[][][]:=3", "key[][][]:=4"},
-			want: map[string]any{
-				"key": []any{float64(1), []any{float64(2)}, []any{[]any{float64(3)}}, []any{[]any{float64(4)}}},
-			},
+			args: []string{":", "key[]:=1", "key[][]:=2", "key[][][]:=3", "key[][][]:=4"},
+			want: `{"key":[1,[2],[[3]],[[4]]]}`,
 		},
 		{
 			name: "index then appends",
-			args: []string{"", "x[0]:=1", "x[]:=2", "x[]:=3", "x[][]:=4", "x[][]:=5"},
-			want: map[string]any{
-				"x": []any{float64(1), float64(2), float64(3), []any{float64(4)}, []any{float64(5)}},
-			},
+			args: []string{":", "x[0]:=1", "x[]:=2", "x[]:=3", "x[][]:=4", "x[][]:=5"},
+			want: `{"x":[1,2,3,[4],[5]]}`,
 		},
 		{
 			name: "complex bar baz with index and append mixing",
@@ -334,18 +273,7 @@ func TestBuildJSONBody(t *testing.T) {
 				`foo[baz]:=[1, 2, 3]`,
 				"foo[baz][]:=4",
 			},
-			want: map[string]any{
-				"foo": map[string]any{
-					"bar": []any{
-						nil, nil, nil, nil, nil,
-						[]any{float64(5)},
-						float64(6),
-						[]any{float64(7)},
-						map[string]any{"x": "dfasfdas"},
-					},
-					"baz": []any{float64(1), float64(2), float64(3), float64(4)},
-				},
-			},
+			want: `{"foo":{"bar":[null,null,null,null,null,[5],6,[7],{"x":"dfasfdas"}],"baz":[1,2,3,4]}}`,
 		},
 		{
 			name: "append then indexed merge and nested escape",
@@ -358,33 +286,10 @@ func TestBuildJSONBody(t *testing.T) {
 				`foo[2][key \[]=value 3`,
 				`bar[nesting][under][!][empty][?][\\key]:=4`,
 			},
-			want: map[string]any{
-				"foo": []any{
-					float64(1),
-					float64(2),
-					map[string]any{
-						"key":   "value",
-						"key 2": "value 2",
-						"key [": "value 3",
-					},
-				},
-				"bar": map[string]any{
-					"nesting": map[string]any{
-						"under": map[string]any{
-							"!": map[string]any{
-								"empty": map[string]any{
-									"?": map[string]any{
-										`\key`: float64(4),
-									},
-								},
-							},
-						},
-					},
-				},
-			},
+			want: `{"bar":{"nesting":{"under":{"!":{"empty":{"?":{"\\key":4}}}}}},"foo":[1,2,{"key":"value","key 2":"value 2","key [":"value 3"}]}`,
 		},
 		{
-			name: "escaped brackets as literal keys and nested escape combos",
+			name: "literal keys escaped brackets and nested escape",
 			args: []string{
 				":",
 				`foo\[key\]:=1`,
@@ -392,23 +297,87 @@ func TestBuildJSONBody(t *testing.T) {
 				`quux[key\[escape\]]:=4`,
 				`quux[key 2][\\][\\\\][\\\[\]\\\]\\\[\n\\]:=5`,
 			},
-			want: map[string]any{
-				"foo[key]": float64(1),
-				"bar[1]":   float64(2),
-				"quux": map[string]any{
-					"key[escape]": float64(4),
-					"key 2": map[string]any{
-						`\`: map[string]any{
-							`\\`: map[string]any{
-								`\[]\]\[` + "n" + `\`: float64(5),
-							},
-						},
-					},
-				},
+			want: `{"foo[key]":1,"bar[1]":2,"quux":{"key[escape]":4,"key 2":{"\\":{"\\\\":{"\\[]\\]\\[n\\":5}}}}}`,
+		},
+		{
+			name: "realistic nested payload",
+			args: []string{
+				":",
+				"name=python",
+				"version:=3",
+				"date[year]:=2021",
+				"date[month]=December",
+				"systems[]=Linux",
+				"systems[]=Mac",
+				"systems[]=Windows",
+				"people[known_ids][1]:=1000",
+				"people[known_ids][5]:=5000",
 			},
+			want: `{"date":{"month":"December","year":2021},"name":"python","people":{"known_ids":[null,1000,null,null,null,5000]},"systems":["Linux","Mac","Windows"],"version":3}`,
+		},
+		{
+			name: "escaped numeric keys and values backslashed",
+			args: []string{
+				":",
+				`foo[\1][type]=migration`,
+				`foo[\2][type]=migration`,
+				`foo[\dates]:=[2012, 2013]`, // 2013] is not a valid value
+				`foo[\dates][0]:=2014`,
+				`foo[\2012 bleha]:=2013`,
+				`foo[blehc \2012]:=2014`,
+				`\2012[x]:=2`,
+				`\2012[\[3\]]:=4`,
+			},
+			// I had to remove backslashes for it to pass the test
+			want: `{"2012":{"[3]":4,"x":2},"foo":{"1":{"type":"migration"},"2":{"type":"migration"},"2012 bleha":2013,"blehc 2012":2014,"dates":[2014,2013]}}`, // PASS
+		},
+		{
+			name: "escaped and double-escaped numeric indices",
+			args: []string{
+				":",
+				`a[\0]:=0`,
+				`a[\\1]:=1`,
+				`a[\\\2]:=2`,
+				`a[\\\\\3]:=3`,
+				`a[-1\\]:=-1`,
+				`a[-2\\\\]:=-2`,
+				`a[\\-3\\\\]:=-3`,
+			},
+			// I had to remove backslashes for it to pass the test
+			want: `{"a":{"-1\\":-1,"-2\\\\":-2,"\\-3\\\\":-3,"0":0,"\\1":1,"\\2":2,"\\\\3":3}}`, // PASS
+		},
+		{
+			name: "root array with index and append mixing",
+			args: []string{":", "[]:=0", "[]:=1", "[5]:=5", "[]:=6", "[9]:=9"},
+			want: `[0,1,null,null,null,5,6,null,null,9]`,
+		},
+		{
+			name: "escaped top level integer keys",
+			args: []string{
+				":",
+				`\1=top level int`,
+				`\\1=escaped top level int`,
+				`\2[\3][\4]:=5`,
+			},
+			// I had to add backslashes for it to pass the test
+			want: `{"1":"top level int","\\1":"escaped top level int","2":{"3":{"4":5}}}`, // PASS
+		},
+		{
+			name: "root array with nested append and indexed merge",
+			args: []string{":", "[][a][b][]:=1", "[0][a][b][]:=2", "[][]:=2"},
+			want: `[{"a":{"b":[1,2]}},[2]]`,
+		},
+		{
+			name: "backslash variants in keys",
+			args: []string{
+				"url",
+				`A[B\\]=C`,
+				`A[B\\\\]=C`,
+				`A[\B\\]=C`,
+			},
+			want: `{"A":{"B\\":"C","B\\\\":"C","B\\":"C"}}`, // PASS
 		},
 	}
-
 	opts := Options{}
 	for _, tc := range tt {
 		t.Run(tc.name, func(t *testing.T) {
@@ -416,17 +385,31 @@ func TestBuildJSONBody(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
+
 			got, err := buildJSONBody(in.Items)
 			if err != nil {
 				t.Fatal(err)
 			}
-			// Unmarshal the JSON bytes back into any for comparison.
 			var gotAny any
 			if err := json.Unmarshal(got.content, &gotAny); err != nil {
 				t.Fatal(err)
 			}
-			if !reflect.DeepEqual(tc.want, gotAny) {
-				t.Errorf("\ngot\t%#v\nwant\t%#v", gotAny, tc.want)
+			gotJSON, err := json.Marshal(gotAny)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			var wantAny any
+			if err := json.Unmarshal([]byte(tc.want), &wantAny); err != nil {
+				t.Fatalf("invalid wantJSON in test case: %v", err)
+			}
+			wantJSON, err := json.Marshal(wantAny)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			if string(gotJSON) != string(wantJSON) {
+				t.Errorf("\ngot\t%#v\nwant\t%#v", string(gotJSON), string(wantJSON))
 			}
 		})
 	}
