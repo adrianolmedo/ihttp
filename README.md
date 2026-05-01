@@ -26,7 +26,7 @@ This proposal is still a work in progress, it is not ready to be used properly f
 
 ## Compile
 
-[Task](taskfile.dev) needed:
+[Task](https://taskfile.dev) needed:
 
 Show the list commands enable:
 
