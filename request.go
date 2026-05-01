@@ -100,6 +100,13 @@ func buildJSONBody(items []item) (bodyTuple, error) {
 			return bodyTuple{}, err
 		}
 
+		// An empty key (e.g. `=value` or `:=value`) means the key is literally
+		// the empty string "". parseKey returns no segments for it, so we
+		// inject the empty-string segment manually.
+		if len(path) == 0 {
+			path = []keyPath{{value: "", escaped: false, appendMode: false}}
+		}
+
 		// Set values, for string data, we can use it directly.
 		// For raw JSON, we need to unmarshal it, etc.
 		var v any
@@ -142,8 +149,9 @@ func buildJSONBody(items []item) (bodyTuple, error) {
 // which affects how it should be treated (e.g., as a literal key rather than an
 // array index).
 type keyPath struct {
-	value   string
-	escaped bool // true when the value was preceded by \ (treat int as string key)
+	value      string
+	escaped    bool // true when the value was preceded by \ (treat int as string key)
+	appendMode bool // true when segment came from [] — array append sentinel
 }
 
 // parseKey parses a key with bracket notation into a slice of path segments.
@@ -180,7 +188,12 @@ func parseKey(k string) ([]keyPath, error) {
 			if !inBracket {
 				return nil, fmt.Errorf("unexpected ']' in %q", k)
 			}
-			parts = append(parts, keyPath{value: buf.String(), escaped: nextEscaped})
+			seg := keyPath{
+				value:      buf.String(),
+				escaped:    nextEscaped,
+				appendMode: buf.Len() == 0, // [] with nothing inside
+			}
+			parts = append(parts, seg)
 			buf.Reset()
 			nextEscaped = false
 			inBracket = false
@@ -208,8 +221,8 @@ func insertJSON(current any, path []keyPath, value any) (any, error) {
 	seg := path[0]
 	rest := path[1:]
 
-	// Treat as map key when: not an index pattern, OR explicitly escaped.
-	if !isIndex(seg.value) || seg.escaped {
+	// Treat as map key when not an array operation.
+	if !seg.appendMode && (!isIndex(seg.value) || seg.escaped) {
 		var obj map[string]any
 		if current == nil {
 			obj = map[string]any{}
@@ -240,8 +253,8 @@ func insertJSON(current any, path []keyPath, value any) (any, error) {
 		}
 	}
 
-	// append []
-	if seg.value == "" {
+	// append [] sentinel
+	if seg.appendMode {
 		if len(rest) == 0 {
 			return append(arr, value), nil
 		}
@@ -265,12 +278,8 @@ func insertJSON(current any, path []keyPath, value any) (any, error) {
 	return arr, nil
 }
 
-// isIndex checks if a string is an integer index (e.g., "0", "1", etc.)
-// or empty (for appending to arrays).
+// isIndex checks if a string is an integer index (e.g., "0", "1", etc.).
 func isIndex(s string) bool {
-	if s == "" {
-		return true
-	}
 	_, err := strconv.Atoi(s)
 	return err == nil
 }
