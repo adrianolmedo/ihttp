@@ -87,76 +87,6 @@ func TestParseKey(t *testing.T) {
 	}
 }
 
-func TestInsertJSON(t *testing.T) {
-	tt := []struct {
-		name  string
-		start any
-		path  []keyPath
-		value any
-		want  any
-	}{
-		{
-			name:  "flat key",
-			path:  []keyPath{{value: "foo"}},
-			value: "bar",
-			want:  map[string]any{"foo": "bar"},
-		},
-		{
-			name:  "numeric index creates array",
-			path:  []keyPath{{value: "0"}},
-			value: "x",
-			want:  []any{"x"},
-		},
-		{
-			name:  "escaped numeric creates map key",
-			path:  []keyPath{{value: "1", escaped: true}},
-			value: "stringified",
-			want:  map[string]any{"1": "stringified"},
-		},
-		{
-			name: "nested map",
-			path: []keyPath{
-				{value: "a"},
-				{value: "b"},
-			},
-			value: 42,
-			want:  map[string]any{"a": map[string]any{"b": 42}},
-		},
-		{
-			name: "append to array with empty segment",
-			path: []keyPath{
-				{value: "arr"},
-				{value: ""},
-			},
-			value: "item",
-			want:  map[string]any{"arr": []any{"item"}},
-		},
-		{
-			name: "sparse array pads with nil",
-			path: []keyPath{
-				{value: "arr"},
-				{value: "2"},
-			},
-			value: "z",
-			want:  map[string]any{"arr": []any{nil, nil, "z"}},
-		},
-	}
-	for _, tc := range tt {
-		t.Run(tc.name, func(t *testing.T) {
-			// insertJSON expects the root to be wrapped one level up,
-			// so we drive it the same way buildJSONBody does: start from nil
-			// and insert at the top-level path.
-			got, err := insertJSON(tc.start, tc.path, tc.value)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if !reflect.DeepEqual(tc.want, got) {
-				t.Errorf("\ngot\t%#v\nwant\t%#v", got, tc.want)
-			}
-		})
-	}
-}
-
 func TestBuildJSONBody(t *testing.T) {
 	tt := []struct {
 		name string
@@ -370,12 +300,27 @@ func TestBuildJSONBody(t *testing.T) {
 		{
 			name: "backslash variants in keys",
 			args: []string{
-				"url",
+				":",
 				`A[B\\]=C`,
 				`A[B\\\\]=C`,
 				`A[\B\\]=C`,
 			},
 			want: `{"A":{"B\\":"C","B\\\\":"C","B\\":"C"}}`, // PASS
+		},
+		{
+			name: "empty string key",
+			args: []string{":", "=empty", "foo=bar", "bar[baz][quux]=tuut"},
+			want: `{"":"empty","bar":{"baz":{"quux":"tuut"}},"foo":"bar"}`,
+		},
+		{
+			name: "empty key raw JSON array with string field",
+			args: []string{":", `:=[1,2,3]`, "foo=bar"},
+			want: `{"":[ 1,2,3],"foo":"bar"}`,
+		},
+		{
+			name: "empty key with raw JSON merged with string field",
+			args: []string{":", `:={"foo": {"bar": "baz"}}`, "top=val"},
+			want: `{"":{"foo":{"bar":"baz"}},"top":"val"}`,
 		},
 	}
 	opts := Options{}
