@@ -82,7 +82,7 @@ func NewInput(args []string, opts Options) (*Input, error) {
 	}
 	in := Input{Options: opts}
 
-	// Set Items by parsing args to items and validate them.
+	// Set Items by parsing args to items.
 	err := in.processItems(items)
 	if err != nil {
 		return nil, err
@@ -104,10 +104,7 @@ func NewInput(args []string, opts Options) (*Input, error) {
 	}
 
 	// Set URL.
-	err = in.processURL(url)
-	if err != nil {
-		return nil, err
-	}
+	in.processURL(url)
 	return &in, nil
 }
 
@@ -118,8 +115,8 @@ func (in *Input) processItems(items []string) error {
 	}
 	in.Items = nil
 	seps := SepsGroupAllItems()
-	for _, raw := range items {
-		item, err := parseItem(raw, seps)
+	for _, item := range items {
+		item, err := parseItem(item, seps)
 		if err != nil {
 			return err
 		}
@@ -265,15 +262,19 @@ func guessMethod(bodyType BodyType) string {
 }
 
 // processURL set URL value, works as parseURL in httpie-go.
-func (in *Input) processURL(url string) error {
+func (in *Input) processURL(url string) {
+	in.URL = processURL(url, in.Options.Scheme())
+}
+
+func processURL(url, scheme string) string {
 	// Prepare the url for add the scheme: `http ://domain.com` → `http://domain.com`.
 	url = strings.TrimPrefix(url, "://")
 
 	// Check scheme: if the URL doesn't specify the protocol,
 	// then precede it with http:// or https://
 	if !reScheme.MatchString(url) {
-		scheme := in.Options.Scheme() + "://"
-		if in.Options.Scheme() == "https" {
+		scheme := scheme + "://"
+		if scheme == "https://" {
 			scheme = "https://"
 		}
 
@@ -300,6 +301,5 @@ func (in *Input) processURL(url string) error {
 			url = scheme + url
 		}
 	}
-	in.URL = url
-	return nil
+	return url
 }

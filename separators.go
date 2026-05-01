@@ -26,6 +26,16 @@ const (
 	//SepQueryEmbedFile        = "==@"
 )
 
+// SepsGroupNestedJSONItems return separators for nested JSON data type Items.
+func SepsGroupNestedJSONItems() []string {
+	return sortSeps([]string{
+		SepDataString,
+		SepDataRawJSON,
+		//SepDataEmbedFileContents,
+		//SepDataEmbedRawJSONFile,
+	})
+}
+
 // SepsGroupDataItems return separators for data type Items.
 func SepsGroupDataItems() []string {
 	return sortSeps([]string{

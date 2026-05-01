@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 )
 
@@ -47,11 +48,15 @@ func NewRequest(in *Input) (*http.Request, []byte, error) {
 	return r.Request, b.content, nil
 }
 
+// bodyTuple is a simple struct to hold the content and content type of the
+// request body.
 type bodyTuple struct {
 	content     []byte
 	contentType string
 }
 
+// buildBody builds the body content and content type based on the [BodyType]
+// specified in the [Input].
 func buildBody(in *Input) (bodyTuple, error) {
 	switch in.BodyType {
 	case EmptyBody:
@@ -77,26 +82,206 @@ func buildBody(in *Input) (bodyTuple, error) {
 	}
 }
 
-// buildJSONBody constructs the body content and content type for a JSON body based.
+// buildJSONBody constructs the body content and content type for a JSON body
+// based on the provided items.
 func buildJSONBody(items []item) (bodyTuple, error) {
-	data := make(map[string]any)
-	for _, it := range items {
-		switch it.Sep {
+	var root any
+
+	for _, item := range items {
+		// Only consider items that are meant for the body (data or raw JSON),
+		// skip others like headers or query params
+		if item.Sep != SepDataString && item.Sep != SepDataRawJSON {
+			continue
+		}
+
+		// Parsing path from the key, e.g., "a[b][c]" to ["a", "b", "c"].
+		path, err := parseKey(item.Key)
+		if err != nil {
+			return bodyTuple{}, err
+		}
+
+		// An empty key (e.g. `=value` or `:=value`) means the key is literally
+		// the empty string "". parseKey returns no segments for it, so we
+		// inject the empty-string segment manually.
+		if len(path) == 0 {
+			path = []keyPath{{value: "", escaped: false, appendMode: false}}
+		}
+
+		// Set values, for string data, we can use it directly.
+		// For raw JSON, we need to unmarshal it, etc.
+		var v any
+		switch item.Sep {
 		case SepDataString:
-			data[it.Key] = it.Val
+			v = item.Val
+
 		case SepDataRawJSON:
-			var v any
-			if err := json.Unmarshal([]byte(it.Val), &v); err != nil {
-				return bodyTuple{}, fmt.Errorf("invalid JSON value for %q: %w", it.Key, err)
+			if err := json.Unmarshal([]byte(item.Val), &v); err != nil {
+				return bodyTuple{}, fmt.Errorf("invalid JSON value for %q: %w", item.Key, err)
 			}
-			data[it.Key] = v
+		}
+
+		// Insert the value into the root object at the specified path.
+		root, err = insertJSON(root, path, v)
+		if err != nil {
+			return bodyTuple{}, err
 		}
 	}
-	b, err := json.Marshal(data)
+
+	// Edge case: without items {} or only non-data items,
+	// we should return an empty JSON object:
+	if root == nil {
+		root = map[string]any{}
+	}
+
+	b, err := json.Marshal(root)
 	if err != nil {
 		return bodyTuple{}, err
 	}
-	return bodyTuple{content: b, contentType: "application/json"}, nil
+	return bodyTuple{
+		content:     b,
+		contentType: "application/json",
+	}, nil
+}
+
+// keyPath represents one parsed segment of a bracket-notation key.
+// For example, value "a[0][b]" would be parsed into segments: "a", "0", and "b".
+// The "escaped" field indicates whether the segment was escaped with a backslash,
+// which affects how it should be treated (e.g., as a literal key rather than an
+// array index).
+type keyPath struct {
+	value      string
+	escaped    bool // true when the value was preceded by \ (treat int as string key)
+	appendMode bool // true when segment came from [] — array append sentinel
+}
+
+// parseKey parses a key with bracket notation into a slice of path segments.
+// For example, "foo[bar][baz]" would be parsed into ["foo", "bar", "baz"].
+func parseKey(k string) ([]keyPath, error) {
+	var parts []keyPath
+	var buf strings.Builder
+	var nextEscaped bool
+	inBracket := false
+
+	for i := 0; i < len(k); i++ {
+		ch := k[i]
+		switch ch {
+		case '\\':
+			if i+1 >= len(k) {
+				return nil, fmt.Errorf("invalid escape at end of %q", k)
+			}
+			i++
+			buf.WriteByte(k[i])
+			nextEscaped = true
+
+		case '[':
+			if inBracket {
+				return nil, fmt.Errorf("unexpected '[' in %q", k)
+			}
+			if buf.Len() > 0 {
+				parts = append(parts, keyPath{value: buf.String(), escaped: nextEscaped})
+				buf.Reset()
+				nextEscaped = false
+			}
+			inBracket = true
+
+		case ']':
+			if !inBracket {
+				return nil, fmt.Errorf("unexpected ']' in %q", k)
+			}
+			seg := keyPath{
+				value:      buf.String(),
+				escaped:    nextEscaped,
+				appendMode: buf.Len() == 0, // [] with nothing inside
+			}
+			parts = append(parts, seg)
+			buf.Reset()
+			nextEscaped = false
+			inBracket = false
+
+		default:
+			buf.WriteByte(ch)
+		}
+	}
+
+	if inBracket {
+		return nil, fmt.Errorf("missing ']' in %q", k)
+	}
+	if buf.Len() > 0 {
+		parts = append(parts, keyPath{value: buf.String(), escaped: nextEscaped})
+	}
+	return parts, nil
+}
+
+// insertJSON inserts a value into a nested map or slice structure based on the
+// provided path.
+func insertJSON(current any, path []keyPath, value any) (any, error) {
+	if len(path) == 0 {
+		return value, nil
+	}
+	seg := path[0]
+	rest := path[1:]
+
+	// Treat as map key when not an array operation.
+	if !seg.appendMode && (!isIndex(seg.value) || seg.escaped) {
+		var obj map[string]any
+		if current == nil {
+			obj = map[string]any{}
+		} else {
+			var ok bool
+			obj, ok = current.(map[string]any)
+			if !ok {
+				return nil, fmt.Errorf("type error: expected object at %q", seg.value)
+			}
+		}
+		updated, err := insertJSON(obj[seg.value], rest, value)
+		if err != nil {
+			return nil, err
+		}
+		obj[seg.value] = updated
+		return obj, nil
+	}
+
+	// ARRAY
+	var arr []any
+	if current == nil {
+		arr = []any{}
+	} else {
+		var ok bool
+		arr, ok = current.([]any)
+		if !ok {
+			return nil, fmt.Errorf("type error: expected array at %q", seg.value)
+		}
+	}
+
+	// append [] sentinel
+	if seg.appendMode {
+		if len(rest) == 0 {
+			return append(arr, value), nil
+		}
+		newItem, err := insertJSON(nil, rest, value)
+		if err != nil {
+			return nil, err
+		}
+		return append(arr, newItem), nil
+	}
+
+	// numeric index
+	idx, _ := strconv.Atoi(seg.value)
+	for len(arr) <= idx {
+		arr = append(arr, nil)
+	}
+	updated, err := insertJSON(arr[idx], rest, value)
+	if err != nil {
+		return nil, err
+	}
+	arr[idx] = updated
+	return arr, nil
+}
+
+// isIndex checks if a string is an integer index (e.g., "0", "1", etc.).
+func isIndex(s string) bool {
+	_, err := strconv.Atoi(s)
+	return err == nil
 }
 
 // buildFormBody constructs the body content and content type for a form body based.
@@ -119,7 +304,8 @@ func buildFormBody(items []item) (bodyTuple, error) {
 	}, nil
 }
 
-// buildMultipartBody constructs the body content and content type for a multipart body based.
+// buildMultipartBody constructs the body content and content type for a multipart
+// body based.
 func buildMultipartBody(items []item, boundary string) (bodyTuple, error) {
 	var buf bytes.Buffer
 	var w *multipart.Writer
@@ -135,6 +321,7 @@ func buildMultipartBody(items []item, boundary string) (bodyTuple, error) {
 			if err := w.WriteField(it.Key, it.Val); err != nil {
 				return bodyTuple{}, err
 			}
+
 		case SepFileUpload:
 			f, err := os.Open(it.Val)
 			if err != nil {
@@ -184,7 +371,7 @@ func (r *request) buildHeaders(in *Input) error {
 			}
 		case SepHeaderEmpty:
 			if i.Val == "" {
-				return fmt.Errorf("invalid item %s (to specify an empty header use `Header;`)", i.Arg)
+				return fmt.Errorf("invalid item %s (to specify an empty header use `Header;`)", i.Orig)
 			}
 			r.Header.Add(i.Key, i.Val)
 		}
@@ -199,6 +386,7 @@ func (r *request) buildDefaultHeaders(in *Input) {
 			r.Header.Set("Accept", "application/json, */*;q=0.5")
 		}
 		if r.Header.Get("Content-Type") == "" {
+
 			// already set from buildBody, but guard anyway
 			r.Header.Set("Content-Type", "application/json")
 		}
