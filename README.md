@@ -24,6 +24,22 @@ This proposal is still a work in progress, it is not ready to be used properly f
   * [Scheme](#scheme)
 * [Roadmap](#roadmap)
 
+## Compile
+
+[Task](taskfile.dev) needed:
+
+Show the list commands enable:
+
+```bash
+task --list
+```
+
+Compile binaries (not install), you get "http" and "https":
+
+```bash
+task build
+```
+
 ## Usage
 
 The name of the HTTP Method comes right before the URL argument:

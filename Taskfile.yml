@@ -1,0 +1,14 @@
+version: '3'
+
+tasks:
+  build:
+    desc: Compile binaries "http" and "https"
+    cmds:
+      - go build -o http cmd/http/*.go
+      - go build -o https cmd/http/*.go
+
+  clean:
+    desc: Remove compiled binaries
+    cmds:
+      - rm -f http
+      - rm -f https
