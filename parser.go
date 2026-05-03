@@ -66,6 +66,7 @@ func parseItem(orig string, seps []string) (item, error) {
 			// and after the separator.
 			key := rebuild(tokens[:i]) + keyLeft
 			value := valueRight + rebuild(tokens[i+1:])
+
 			return item{
 				Key:  key,
 				Val:  value,
@@ -85,6 +86,21 @@ func rebuild(tks []token) string {
 		sb.WriteString(t.value)
 	}
 	return sb.String()
+}
+
+// extractRawKey returns the portion of arg before the first unescaped
+// occurrence of sep, preserving all backslashes as-is.
+func extractRawKey(arg, sep string) string {
+	for i := 0; i < len(arg); i++ {
+		if arg[i] == '\\' {
+			i++ // skip next char regardless, preserving the backslash
+			continue
+		}
+		if strings.HasPrefix(arg[i:], sep) {
+			return arg[:i]
+		}
+	}
+	return arg
 }
 
 // tokenize tokenize the raw arg string. There are only two [token] types,

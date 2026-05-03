@@ -89,9 +89,10 @@ func TestParseKey(t *testing.T) {
 
 func TestBuildJSONBody(t *testing.T) {
 	tt := []struct {
-		name string
-		args []string
-		want string
+		name        string
+		args        []string
+		want        string
+		errExpected bool
 	}{
 		{
 			name: "append array",
@@ -163,7 +164,7 @@ func TestBuildJSONBody(t *testing.T) {
 			want: `{"[]":1,"escape[d]":1,"escaped[]":1,"e[s]":{"c":{"a":{"p":{"[ed]":[1]}}}}}`,
 		},
 		{
-			name: "root array", // root array
+			name: "root array",
 			args: []string{":", "[]:=1", "[]=foo"},
 			want: `[1,"foo"]`,
 		},
@@ -258,7 +259,6 @@ func TestBuildJSONBody(t *testing.T) {
 				`\2012[x]:=2`,
 				`\2012[\[3\]]:=4`,
 			},
-			// I had to remove backslashes for it to pass the test
 			want: `{"2012":{"[3]":4,"x":2},"foo":{"1":{"type":"migration"},"2":{"type":"migration"},"2012 bleha":2013,"blehc 2012":2014,"dates":[2014,2013]}}`, // PASS
 		},
 		{
@@ -273,8 +273,7 @@ func TestBuildJSONBody(t *testing.T) {
 				`a[-2\\\\]:=-2`,
 				`a[\\-3\\\\]:=-3`,
 			},
-			// I had to remove backslashes for it to pass the test
-			want: `{"a":{"-1\\":-1,"-2\\\\":-2,"\\-3\\\\":-3,"0":0,"\\1":1,"\\2":2,"\\\\3":3}}`, // PASS
+			want: `{"a":{"-1\\":-1,"-2\\\\":-2,"\\-3\\\\":-3,"0":0,"\\1":1,"\\2":2,"\\\\3":3}}`,
 		},
 		{
 			name: "root array with index and append mixing",
@@ -289,8 +288,7 @@ func TestBuildJSONBody(t *testing.T) {
 				`\\1=escaped top level int`,
 				`\2[\3][\4]:=5`,
 			},
-			// I had to add backslashes for it to pass the test
-			want: `{"1":"top level int","\\1":"escaped top level int","2":{"3":{"4":5}}}`, // PASS
+			want: `{"1":"top level int","\\1":"escaped top level int","2":{"3":{"4":5}}}`,
 		},
 		{
 			name: "root array with nested append and indexed merge",
@@ -305,7 +303,7 @@ func TestBuildJSONBody(t *testing.T) {
 				`A[B\\\\]=C`,
 				`A[\B\\]=C`,
 			},
-			want: `{"A":{"B\\":"C","B\\\\":"C","B\\":"C"}}`, // PASS
+			want: `{"A":{"B\\":"C","B\\\\":"C","B\\":"C"}}`,
 		},
 		{
 			name: "empty string key",
@@ -322,6 +320,12 @@ func TestBuildJSONBody(t *testing.T) {
 			args: []string{":", `:={"foo": {"bar": "baz"}}`, "top=val"},
 			want: `{"":{"foo":{"bar":"baz"}},"top":"val"}`,
 		},
+		{
+			name:        "invalid key with unclosed bracket",
+			args:        []string{":", "A[:=1"},
+			want:        "",
+			errExpected: true,
+		},
 	}
 	opts := Options{}
 	for _, tc := range tt {
@@ -332,9 +336,13 @@ func TestBuildJSONBody(t *testing.T) {
 			}
 
 			got, err := buildJSONBody(in.Items)
-			if err != nil {
-				t.Fatal(err)
+			if (err != nil) != tc.errExpected {
+				t.Fatalf("unexpected error status: %v", err)
 			}
+			if tc.errExpected {
+				return
+			}
+
 			var gotAny any
 			if err := json.Unmarshal(got.content, &gotAny); err != nil {
 				t.Fatal(err)
@@ -353,8 +361,177 @@ func TestBuildJSONBody(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			if string(gotJSON) != string(wantJSON) {
+			if !tc.errExpected && string(gotJSON) != string(wantJSON) {
 				t.Errorf("\ngot\t%#v\nwant\t%#v", string(gotJSON), string(wantJSON))
+			}
+		})
+	}
+}
+
+func TestBuildJSONBodyErrors(t *testing.T) {
+	tt := []struct {
+		name            string
+		args            []string
+		errExpected     bool
+		wantErrContains string
+	}{
+		{
+			name:            "unclosed bracket with colon",
+			args:            []string{":", "A[:=1"}, // PASS
+			wantErrContains: `missing ']' in "A["`,  // missing is Expecting in HTTPie (coincides)
+			errExpected:     true,
+		},
+		{
+			name:            "unclosed bracket with number",
+			args:            []string{":", "A[1:=1"}, // PASS
+			wantErrContains: "missing ']'",
+			errExpected:     true,
+		},
+		{
+			name:            "unclosed bracket with text",
+			args:            []string{":", "A[text:=1"},  // PASS
+			wantErrContains: "missing ']' in \"A[text\"", // missing is Expecting in HTTPie (coincides)
+			errExpected:     true,
+		},
+		{
+			name:            "unclosed bracket in middle of multiple items",
+			args:            []string{":", "A[key]=value", "B[something]=u", "A[text][:=1", "C[key]=value"}, // PASS
+			wantErrContains: `missing ']' in "A[text]["`,
+			errExpected:     true,
+		},
+		{
+			name:            "unclosed bracket with multiple levels",
+			args:            []string{":", "foo[bar][1]][]:=2"}, // PASS
+			wantErrContains: `missing '[' in "foo[bar][1]][]"`,
+			errExpected:     true,
+		},
+		{
+			name:            "unclosed bracket with nested unclosed bracket",
+			args:            []string{":", "foo[bar][1][14[]:=2"}, // FAIL
+			wantErrContains: `unexpected '[' in "foo[bar][1][14[]"`,
+			errExpected:     true,
+		},
+		{
+			name:            "unexpected closing bracket",
+			args:            []string{":", "A\\[]:=1"},   // PASS
+			wantErrContains: `unexpected ']' in "A\\[]"`, // in HTTPie appear as Expecting ']' in "A\["
+			errExpected:     true,
+		},
+		{
+			name:            "escaped closing bracket",
+			args:            []string{":", "A[something\\]:=1"}, // PASS
+			wantErrContains: `missing ']' in "A[something\\]"`,  // (coincides with HTTPie)
+			errExpected:     true,
+		},
+		{
+			name:            "escaped opening bracket",
+			args:            []string{":", "foo\\[bar\\]\\\\[   bleh:=1"}, // PASS
+			wantErrContains: `missing ']' in "foo\\[bar\\]\\\\[   bleh"`,  // (coincides with HTTPie)
+			errExpected:     true,
+		},
+		{
+			name:            "unescaped opening bracket",
+			args:            []string{":", "foo\\[bar\\]\\\\[   bleh   :=1"}, // PASS
+			wantErrContains: `missing ']' in "foo\\[bar\\]\\\\[   bleh   "`,  // (coincides with HTTPie)
+			errExpected:     true,
+		},
+		{
+			name:            "key access on string", // PASS
+			args:            []string{":", "foo=1", "foo[key]:=2"},
+			wantErrContains: `type error: cannot perform key access on "key", expected object`,
+			errExpected:     true,
+		},
+		{
+			name:            "index access on string", // PASS
+			args:            []string{":", "foo=1", "foo[0]:=2"},
+			wantErrContains: `type error: cannot perform index access on "0", expected array`,
+			errExpected:     true,
+		},
+		{
+			name:            "append access on string", // PASS
+			args:            []string{":", "foo=1", "foo[]:=2"},
+			wantErrContains: `type error: cannot perform append access on "", expected array`,
+			errExpected:     true,
+		},
+		{
+			name:            "index access on object", // PASS
+			args:            []string{":", "data[key]=value", "data[key 2]=value 2", "data[0]=value"},
+			wantErrContains: `type error: cannot perform index access on "0", expected array`,
+			errExpected:     true,
+		},
+		{
+			name:            "append access on object", // PASS
+			args:            []string{":", "data[key]=value", "data[key 2]=value 2", "data[]=value"},
+			wantErrContains: `type error: cannot perform append access on "", expected array`,
+			errExpected:     true,
+		},
+		{
+			name:            "key access on array", // PASS
+			args:            []string{":", "foo[bar][baz][5]:=[1,2,3]", "foo[bar][baz][5][]:=4", "foo[bar][baz][key][]:=5"},
+			wantErrContains: `type error: cannot perform key access on "key", expected object`,
+			errExpected:     true,
+		},
+		{
+			name:            "negative index",
+			args:            []string{":", "foo[-10]:=[1,2]"}, // PASS
+			wantErrContains: "value error: negative indexes are not supported",
+			errExpected:     true,
+		},
+		{
+			name:            "object then append at root", // PASS
+			args:            []string{":", "x=y", "[]:=2"},
+			wantErrContains: `type error: cannot perform append access on "", expected array`,
+			errExpected:     true,
+		},
+		{
+			name:            "array then key at root", // PASS
+			args:            []string{":", "[]:=2", "x=y"},
+			wantErrContains: `type error: cannot perform key access on "x", expected object`,
+			errExpected:     true,
+		},
+		{
+			name:            "object then append at root via raw JSON", // PASS
+			args:            []string{":", ":=[1,2,3]", "[]:=4"},
+			wantErrContains: `type error: cannot perform append access on "", expected array`,
+			errExpected:     true,
+		},
+		{
+			name:            "array then key at root via raw JSON", // PASS
+			args:            []string{":", "[]:=4", ":=[1,2,3]"},
+			wantErrContains: `type error: cannot perform key access on "", expected object`,
+			errExpected:     true,
+		},
+		{
+			name:            "text after closed bracket", // PASS
+			args:            []string{":", "A[text]1:=1"},
+			wantErrContains: `missing '[' in "A[text]1"`,
+			errExpected:     true,
+		},
+		{
+			name:            "unexpected content after closing bracket", // PASS
+			args:            []string{":", "foo[bar][1]something[]:=2"},
+			wantErrContains: `missing '[' in "foo[bar][1]something[]"`,
+			errExpected:     true,
+		},
+		{
+			name:            "unclosed bracket with nested escaped opening bracket", // PASS
+			args:            []string{":", "foo[bar][1]\\[14[]:=2"},
+			wantErrContains: `missing '[' in "foo[bar][1]\\[14[]"`,
+			errExpected:     true,
+		},
+	}
+	for _, tc := range tt {
+		t.Run(tc.name, func(t *testing.T) {
+			in, err := NewInput(tc.args, Options{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			_, err = buildJSONBody(in.Items)
+			if (err != nil) != tc.errExpected {
+				t.Fatalf("unexpected error status: %v", err)
+			}
+			if err != nil && !strings.Contains(err.Error(), tc.wantErrContains) {
+				t.Fatalf("\ngot\t%#q\nwant\t%#q", err.Error(), tc.wantErrContains)
 			}
 		})
 	}
@@ -425,6 +602,7 @@ func TestBuildRequestBody(t *testing.T) {
 			if tc.errExpected {
 				return
 			}
+
 			// For multipart the boundary is random, so only check the prefix.
 			if tc.opts.Multipart || (tc.opts.Form && containsFile(inp.Items)) {
 				if !strings.HasPrefix(got.contentType, "multipart/form-data") {

@@ -198,6 +198,11 @@ func parseKey(k string) ([]keyPath, error) {
 			nextEscaped = false
 			inBracket = false
 
+			// After closing a bracket, the only valid next character is '[' or end
+			// of string. Anything else is unexpected content.
+			if i+1 < len(k) && k[i+1] != '[' {
+				return nil, fmt.Errorf("missing '[' in %q", k)
+			}
 		default:
 			buf.WriteByte(ch)
 		}
@@ -230,7 +235,7 @@ func insertJSON(current any, path []keyPath, value any) (any, error) {
 			var ok bool
 			obj, ok = current.(map[string]any)
 			if !ok {
-				return nil, fmt.Errorf("type error: expected object at %q", seg.value)
+				return nil, fmt.Errorf("type error: cannot perform key access on %q, expected object", seg.value)
 			}
 		}
 		updated, err := insertJSON(obj[seg.value], rest, value)
@@ -249,7 +254,10 @@ func insertJSON(current any, path []keyPath, value any) (any, error) {
 		var ok bool
 		arr, ok = current.([]any)
 		if !ok {
-			return nil, fmt.Errorf("type error: expected array at %q", seg.value)
+			if seg.appendMode {
+				return nil, fmt.Errorf("type error: cannot perform append access on %q, expected array", seg.value)
+			}
+			return nil, fmt.Errorf("type error: cannot perform index access on %q, expected array", seg.value)
 		}
 	}
 
@@ -267,6 +275,9 @@ func insertJSON(current any, path []keyPath, value any) (any, error) {
 
 	// numeric index
 	idx, _ := strconv.Atoi(seg.value)
+	if idx < 0 {
+		return nil, fmt.Errorf("value error: negative indexes are not supported")
+	}
 	for len(arr) <= idx {
 		arr = append(arr, nil)
 	}

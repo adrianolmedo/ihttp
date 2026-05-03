@@ -73,7 +73,7 @@ func TestProcessURL(t *testing.T) {
 			inp.processURL(tc.args[0])
 			got := inp.URL
 			if tc.want != got {
-				t.Errorf("\narg: %s\n%s: want %q, got %q,", tc.args[0], tc.name, tc.want, got)
+				t.Errorf("\narg: %s\n%s: got %q, want %q,", tc.args[0], tc.name, got, tc.want)
 			}
 		})
 	}
@@ -103,11 +103,11 @@ func TestProcessURLWithHTTPS(t *testing.T) {
 	for _, tc := range tt {
 		t.Run(tc.name, func(t *testing.T) {
 			opts.SetScheme(tc.scheme)
-			inp := Input{Options: opts}
-			inp.processURL(tc.args[0])
-			got := inp.URL
+			in := Input{Options: opts}
+			in.processURL(tc.args[0])
+			got := in.URL
 			if tc.want != got {
-				t.Errorf("\narg: %s\n%s: want %q, got %q,", tc.args[0], tc.name, tc.want, got)
+				t.Errorf("\narg: %s\n%s: got %q, want %q,", tc.args[0], tc.name, got, tc.want)
 			}
 		})
 	}
@@ -150,16 +150,16 @@ func TestProcessItems(t *testing.T) {
 			errExpected: true,
 		},
 	}
-	inp := &Input{}
+	in := &Input{}
 	for _, tc := range tt {
 		t.Run(tc.name, func(t *testing.T) {
-			err := inp.processItems(tc.args)
+			err := in.processItems(tc.args)
 			if (err != nil) != tc.errExpected {
 				t.Fatalf("%s: unexpected error status: %v", tc.name, err)
 			}
-			got := inp.Items
+			got := in.Items
 			if !tc.errExpected && !reflect.DeepEqual(tc.want, got) {
-				t.Errorf("%s\nwant\t%#v\ngot\t%#v", tc.args, tc.want, got)
+				t.Errorf("%s\ngot\t%#v\nwant\t%#v", tc.args, got, tc.want)
 			}
 		})
 	}
